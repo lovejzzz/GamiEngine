@@ -37,11 +37,12 @@ Build a playable scene system, not a flattened picture. GPT-generated pixels mus
 - Treat a rigged base body as a deformation carrier, not a dressed character. It cannot pass character fidelity while underwear, anatomy texture, T-pose shoulders, exposed joints, or generic base proportions remain conspicuous through missing costume geometry.
 - Keep the runtime body and animation library as separate manifest assets with audited provenance. Prune the library to the gameplay clip inventory, crossfade state changes, and keep engine-owned root motion authoritative; when retargeting across similar rigs, begin with joint rotations and reject source translations until limb-length and foot-contact tests prove they are safe.
 - Load authored character assets asynchronously behind the procedural fallback. Hide the fallback only after the skinned model and required clips are ready, and expose a runtime-ready signal that browser tests can distinguish from a successful fallback.
-- Treat a rigged base body as a deformation carrier, not a dressed character. It cannot pass character fidelity while underwear, anatomy texture, T-pose shoulders, exposed joints, or generic base proportions remain conspicuous through missing costume geometry.
-- Keep the runtime body and animation library as separate manifest assets with audited provenance. Prune the library to the gameplay clip inventory, crossfade state changes, and keep engine-owned root motion authoritative; when retargeting across similar rigs, begin with joint rotations and reject source translations until limb-length and foot-contact tests prove they are safe.
-- Load authored character assets asynchronously behind the procedural fallback. Hide the fallback only after the skinned model and required clips are ready, and expose a runtime-ready signal that browser tests can distinguish from a successful fallback.
 - Build atmosphere through readable values, not darkness. Preserve black or cool exterior separation, visible interior midtones, localized practical-light pools, contact shadows and restrained highlights. If the player cannot read construction or collision, the lighting pass has failed.
 - Use narrative set dressing in primary, secondary and tertiary scales. Add controlled asymmetry and evidence of residents—moved chairs, mail, shoes, books, textiles and wear—without narrowing required routes or turning every room into random clutter.
+- Do not let manifest declarations certify their own quality. A named blueprint, texture path, triangle budget, child count, or manually set `passed` flag is only a claim. Quality evidence must measure or inspect the shipped mesh, UVs, maps, lighting and browser render independently.
+- Audit a stalled visual result from upstream to downstream: framing/readability, silhouette and construction, UV and material calibration, indirect/contact lighting, set-dressing variation, then animation and post effects. Stop polishing downstream layers when an upstream layer is still visibly dominant.
+- Treat base-color textures as measured albedo. Keep the material color factor white unless a deliberate, measured tint is required; multiplying an already colored map by a dark factor can erase half or more of its luminance and make valid PBR maps look muddy.
+- Require a calibrated reference-to-runtime comparison for Hero assets: matching view, silhouette or landmark overlay, neutral-light turntable, and a scene-distance capture. Prose such as “learn silhouette” or a topology-name test is not evidence that the modeled result resembles the reference.
 
 ## Workflow
 
@@ -58,6 +59,7 @@ Build a playable scene system, not a flattened picture. GPT-generated pixels mus
 8. Validate build/type checks, player traversal, door limits, stairs, missing-asset fallback, sprite alpha, frame slicing, and export/import round trips. Use the scripts in `scripts/` when their inputs are available.
    Also validate that one input changes only the targeted instance/child, every visually distinct state resolves to an asset or declared procedural renderer, reference studies carry `never-render-directly`, and rejected contact sheets or all-open mockups are not referenced by runtime scenes.
 9. Perform a browser-based art-and-play pass at the intended presentation viewport. Capture a screenshot, compare it to the art-direction contract, then walk the actual route through doors, around furniture and occupants, and across every stair portal. Fix composition or layout blockers found during the run; do not accept a build-only check as visual validation.
+   When the scene looks polished in its reference but coarse at runtime, read [quality-gate.md](references/quality-gate.md) and run its bottleneck audit before adding more assets or post-processing.
 
 ## Character animation
 
@@ -69,7 +71,6 @@ Sprite-based walking characters need real frame assets. A static image with CSS 
 - Store atlas columns, rows, direction order, FPS, pivot, and physical footprint in the manifest.
 - For a 3D rig, store skeleton/part IDs, clips, duration or FPS, root-motion policy, and collider footprint. At minimum animate opposing arms/legs for locomotion and provide a stable idle pose.
 - Blend into and out of locomotion instead of snapping joint angles. A patrol clip is valid only when the actor changes navigation position; sleeping, hiding, sitting, pushing, and searching need distinct poses or clips rather than a rotated standing cycle.
-- Derive the shipped clip subset from the manifest state inventory. Use `node scripts/prune_gltf_animations.mjs input.gltf output.gltf Clip_A Clip_B ...` to remove unrelated clips before deployment; this reduces payload but does not replace retarget and visual review.
 - Derive the shipped clip subset from the manifest state inventory. Use `node scripts/prune_gltf_animations.mjs input.gltf output.gltf Clip_A Clip_B ...` to remove unrelated clips before deployment; this reduces payload but does not replace retarget and visual review.
 - A visible checkerboard is not proof of transparency. Verify PNG alpha. Fractional cell dimensions are allowed only if the renderer slices with floating-point source rectangles; otherwise pad or regenerate the atlas.
 

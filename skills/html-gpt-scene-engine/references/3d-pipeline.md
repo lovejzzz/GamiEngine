@@ -43,6 +43,10 @@ Generate neutral-lit seamless maps by material zone, not by whole object. Start 
 
 Map the materials onto UV-authored geometry. Lighting, cast shadows, fog, night vision, damage overlays, selection, and interaction highlights remain runtime effects.
 
+Do not multiply a finished base-color map by an arbitrary dark material color. In metallic-roughness workflows the factor multiplies sampled albedo in linear space, so a seemingly mild tint can remove most of the reflected energy. Start with a white factor, inspect the material under a neutral HDR environment, and introduce tint only as a measured art-direction adjustment.
+
+Validate actual UV coverage rather than declared texel density. Shared procedural materials applied to unrelated default UVs often map one complete texture tile onto a tiny knob and the same tile onto a two-meter tabletop. Require consistent pixels per meter, correct grain direction, no visible seams, and separate UV/material variants when construction direction changes.
+
 ## 4. Cross the production bridge
 
 Choose the bridge by asset class: structured architecture, stairs, doors, and cabinets usually compile from measured parametric blueprints; irregular static props may use an image-to-3D or authored glTF cleanup path; characters reuse a shared rig and authored clips. Preserve a renderer-safe procedural fallback.
@@ -58,14 +62,6 @@ Before producing a character, keep a clip inventory in the asset recipe with a s
 For an external or generated rig, record creator/source/license and keep the model and animation-library IDs separate. Prune clips from the interaction and locomotion inventory instead of shipping a complete library. Retarget rotations first; if the engine owns root motion, discard source root and per-bone translations until a measured test proves they preserve target proportions and foot contact. Crossfade state changes and verify that locomotion advances only when simulation position advances.
 
 Clip names are claims, not evidence. After retargeting, inspect the actual silhouette at the action extreme: a source clip named `push`, `stairs`, `aim` or `interact` may produce raised hands, inverted elbows, detached equipment or a mismatched center of gravity on the target rig. Map gameplay to the best verified result and leave semantically named but visually wrong clips unused.
-
-Clip names are claims, not evidence. After retargeting, inspect the actual silhouette at the action extreme: a source clip named `push`, `stairs`, `aim` or `interact` may produce raised hands, inverted elbows, detached equipment or a mismatched center of gravity on the target rig. Map gameplay to the best verified result and leave semantically named but visually wrong clips unused.
-
-A skinned nude, underwear, superhero-base or neutral scan is only a deformation carrier. Build or generate independent costume geometry that covers the carrier from front, back and side while moving. Review elbows, knees, hips, shoulders, shoes, neckline and equipment attachment in idle, stride extremes, crouch and interaction. Exposed carrier patches or detached equipment fail character fidelity even when the skeleton and clip technically work.
-
-Keep a renderer-safe procedural fallback, but expose whether the authored model is `loading`, `ready`, or `failed`. A screenshot of the fallback cannot certify the glTF path.
-
-For an external or generated rig, record creator/source/license and keep the model and animation-library IDs separate. Prune clips from the interaction and locomotion inventory instead of shipping a complete library. Retarget rotations first; if the engine owns root motion, discard source root and per-bone translations until a measured test proves they preserve target proportions and foot contact. Crossfade state changes and verify that locomotion advances only when simulation position advances.
 
 A skinned nude, underwear, superhero-base or neutral scan is only a deformation carrier. Build or generate independent costume geometry that covers the carrier from front, back and side while moving. Review elbows, knees, hips, shoulders, shoes, neckline and equipment attachment in idle, stride extremes, crouch and interaction. Exposed carrier patches or detached equipment fail character fidelity even when the skeleton and clip technically work.
 
