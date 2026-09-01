@@ -66,14 +66,33 @@ export type AssetRecipe = {
   };
   referenceStudy?: {
     source: string;
+    views?: Array<'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'perspective'>;
     learn: Array<'silhouette' | 'proportion' | 'material-zones' | 'wear-language' | 'color-palette'>;
     runtimeRule: 'never-render-directly';
   };
   geometry?: {
     source: 'procedural' | 'gltf';
+    qualityTier?: 'graybox' | 'standard' | 'hero';
     primitiveFamily?: string;
+    blueprintId?: string;
     meshSource?: string;
+    fallbackPrimitiveFamily?: string;
     independentlyModeledParts?: string[];
+  };
+  pbr?: {
+    baseColorAsset: string;
+    normalAsset?: string;
+    roughnessAsset?: string;
+    metalnessAsset?: string;
+    aoAsset?: string;
+    texelDensityPxPerMeter: number;
+  };
+  quality?: {
+    status: 'fallback' | 'production';
+    minBevelRadiusM: number;
+    triangleBudget: number;
+    maxDrawCalls: number;
+    lods: number;
   };
   animation?: {
     skeleton: string;

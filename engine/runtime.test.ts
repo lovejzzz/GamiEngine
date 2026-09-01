@@ -10,6 +10,7 @@ import {
   segmentHitsRect,
   stairProgress,
   stairTraversalDirection,
+  toggleDoorMotor,
   updateDoor,
   type RuntimeDoor,
 } from './runtime';
@@ -20,6 +21,7 @@ const makeDoor = (): RuntimeDoor => ({
   hinge: { x: 0, y: 0 },
   length: 80,
   width: 10,
+  closedAngle: 0,
   angle: 0,
   angularVelocity: 0,
   minAngle: -Math.PI / 2,
@@ -49,6 +51,20 @@ describe('runtime geometry', () => {
     for (let index = 0; index < 300; index += 1) updateDoor(door, 1 / 60);
     expect(door.angle).toBeGreaterThanOrEqual(door.minAngle);
     expect(door.angle).toBeLessThanOrEqual(door.maxAngle);
+  });
+
+  it('labels open and close from the authored closed angle for either hinge direction', () => {
+    const door = makeDoor();
+    expect(toggleDoorMotor(door)).toBe('open');
+    expect(door.motorTarget).toBe(Math.PI / 2);
+    door.angle = Math.PI / 2;
+    expect(toggleDoorMotor(door)).toBe('close');
+    expect(door.motorTarget).toBe(0);
+
+    door.closedAngle = door.minAngle;
+    door.angle = door.minAngle;
+    expect(toggleDoorMotor(door)).toBe('open');
+    expect(door.motorTarget).toBe(door.maxAngle);
   });
 
   it('clamps streamed floor navigation', () => {

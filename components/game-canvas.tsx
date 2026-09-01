@@ -3,6 +3,8 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { createParametricSofa } from './parametric-asset-factory';
 import { buildingScene } from '@/engine/demo-scene';
 import { resolveRuntimeSource } from '@/engine/asset-registry';
 import type { FloorSpec, InteractionProfile, OccupantSpec, PropSpec, RectSpec, Vec2 } from '@/engine/types';
@@ -14,6 +16,7 @@ import {
   pushDoor,
   stairProgress,
   stairTraversalDirection,
+  toggleDoorMotor,
   updateDoor,
   type CircleCollider,
   type RuntimeDoor,
@@ -130,6 +133,10 @@ export function GameCanvas({
     renderer.domElement.tabIndex = 0;
     renderer.domElement.setAttribute('aria-label', 'Gami Engine 3D 房屋演示。WASD 移动，E 开门，Q 互动，沿楼梯行走自动上下楼。');
     mount.appendChild(renderer.domElement);
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    const environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environment = environment;
+    scene.environmentIntensity = 0.38;
     const interactionPrompt = document.createElement('div');
     interactionPrompt.className = 'interaction-prompt';
     interactionPrompt.hidden = true;
@@ -149,9 +156,14 @@ export function GameCanvas({
 
     const textureLoader = new THREE.TextureLoader();
     const textureSource = (id: string) => resolveRuntimeSource(buildingScene.assets, id, 'runtime-texture');
-    const makeTexture = (source: string, repeatX = 1, repeatY = 1) => {
+    const makeTexture = (
+      source: string,
+      repeatX = 1,
+      repeatY = 1,
+      colorSpace: 'srgb' | 'linear' = 'srgb',
+    ) => {
       const texture = textureLoader.load(source);
-      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.colorSpace = colorSpace === 'srgb' ? THREE.SRGBColorSpace : THREE.NoColorSpace;
       texture.wrapS = THREE.RepeatWrapping;
       texture.wrapT = THREE.RepeatWrapping;
       texture.repeat.set(repeatX, repeatY);
@@ -176,6 +188,21 @@ export function GameCanvas({
     const wainscotMaterial = material(0x8d6d55, textureSource('material.walnut'), 0.8, 0, 2.1, 1.1);
     const walnutMaterial = material(0xb28e72, textureSource('material.walnut'), 0.74, 0, 1.4, 1.4);
     const upholsteryMaterial = material(0x71816d, textureSource('material.upholstery.olive'), 0.98, 0, 1.8, 1.8);
+    const sofaLeatherMaterial = new THREE.MeshPhysicalMaterial({
+      color: 0xaab39a,
+      map: makeTexture(textureSource('material.leather.olive.base')!, 2.4, 2.1),
+      normalMap: makeTexture(textureSource('material.leather.olive.normal')!, 2.4, 2.1, 'linear'),
+      normalScale: new THREE.Vector2(0.18, 0.18),
+      roughnessMap: makeTexture(textureSource('material.leather.olive.roughness')!, 2.4, 2.1, 'linear'),
+      roughness: 0.78,
+      metalness: 0,
+      sheen: 0.22,
+      sheenColor: new THREE.Color(0x68725e),
+      sheenRoughness: 0.82,
+      clearcoat: 0.025,
+      clearcoatRoughness: 0.72,
+    });
+    const sofaPipingMaterial = new THREE.LineBasicMaterial({ color: 0x2c2922, transparent: true, opacity: 0.82 });
     const sageMaterial = material(0x8b9b89, textureSource('material.sage-paint'), 0.86, 0, 1.2, 1.2);
     const tacticalMaterial = material(0x1f2924, textureSource('material.tactical-fabric'), 0.95, 0, 2, 2);
     const brassMaterial = material(0x9a7138, undefined, 0.38, 0.68);
@@ -313,6 +340,7 @@ export function GameCanvas({
       hinge: { ...spec.hinge },
       length: spec.length,
       width: spec.width,
+      closedAngle: spec.closedAngle,
       angle: memory.doors[spec.id] ?? spec.closedAngle,
       angularVelocity: 0,
       minAngle: spec.minAngle,
@@ -338,17 +366,13 @@ export function GameCanvas({
     }
 
     const createSofa = (prop: PropSpec) => {
-      const group = new THREE.Group();
       const width = toMeters(prop.size.x);
       const depth = toMeters(prop.size.y);
-      addBox(group, [width * 0.92, 0.36, depth * 0.72], [0, 0.3, 0.05], upholsteryMaterial);
-      addBox(group, [width, 0.7, depth * 0.18], [0, 0.58, -depth * 0.38], upholsteryMaterial);
-      addBox(group, [width * 0.07, 0.48, depth], [-width * 0.47, 0.4, 0], upholsteryMaterial);
-      addBox(group, [width * 0.07, 0.48, depth], [width * 0.47, 0.4, 0], upholsteryMaterial);
-      for (let index = -1; index <= 1; index += 1) {
-        addBox(group, [width * 0.27, 0.12, depth * 0.58], [index * width * 0.29, 0.53, 0.07], upholsteryMaterial);
-      }
-      return group;
+      return createParametricSofa(width, depth, {
+        leather: sofaLeatherMaterial,
+        walnut: walnutMaterial,
+        piping: sofaPipingMaterial,
+      });
     };
 
     const createBed = (prop: PropSpec) => {
@@ -939,9 +963,8 @@ export function GameCanvas({
         if (!nearby) stateRef.current.onStatus('附近没有可操作的门');
         else {
           const door = nearby.door;
-          const nearMin = Math.abs(door.angle - door.minAngle) < Math.abs(door.angle - door.maxAngle);
-          door.motorTarget = nearMin ? door.maxAngle : door.minAngle;
-          stateRef.current.onStatus(`${door.name}：${nearMin ? '打开' : '关闭'}`);
+          const action = toggleDoorMotor(door);
+          stateRef.current.onStatus(`${door.name}：${action === 'open' ? '打开' : '关闭'}`);
         }
       }
       if (key === 'q') interact();
@@ -1185,6 +1208,9 @@ export function GameCanvas({
       renderer.domElement.dataset.camera = state.cameraMode;
       renderer.domElement.dataset.renderer = 'three-webgl';
       renderer.domElement.dataset.interactions = JSON.stringify({ ...memory.props, ...memory.parts });
+      renderer.domElement.dataset.doors = JSON.stringify(Object.fromEntries(
+        doors.map((door) => [door.id, Number(door.angle.toFixed(3))]),
+      ));
       renderer.domElement.dataset.focusedInteraction = focusedInteraction?.id ?? '';
       renderer.domElement.dataset.interactionBusy = String(now < interactionBusyUntil);
       renderer.domElement.dataset.stairProgress = playerOnStairs ? stairProgress(player, floor.stairs).toFixed(3) : '';
@@ -1213,13 +1239,21 @@ export function GameCanvas({
         if (object instanceof THREE.Mesh) {
           object.geometry.dispose();
           const disposeMaterial = (entry: THREE.Material) => {
-            if (entry instanceof THREE.MeshStandardMaterial) entry.map?.dispose();
+            if (entry instanceof THREE.MeshStandardMaterial) {
+              entry.map?.dispose();
+              entry.normalMap?.dispose();
+              entry.roughnessMap?.dispose();
+              entry.metalnessMap?.dispose();
+              entry.aoMap?.dispose();
+            }
             entry.dispose();
           };
           if (Array.isArray(object.material)) object.material.forEach(disposeMaterial);
           else disposeMaterial(object.material);
         }
       });
+      environment.dispose();
+      pmremGenerator.dispose();
       renderer.dispose();
       renderer.domElement.remove();
       interactionPrompt.remove();

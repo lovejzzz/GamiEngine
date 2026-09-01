@@ -12,6 +12,7 @@ export type RuntimeDoor = {
   hinge: Vec2;
   length: number;
   width: number;
+  closedAngle: number;
   angle: number;
   angularVelocity: number;
   minAngle: number;
@@ -131,6 +132,16 @@ export function updateDoor(door: RuntimeDoor, dt: number) {
     door.angle = door.maxAngle;
     door.angularVelocity = Math.min(0, door.angularVelocity) * 0.16;
   }
+}
+
+/** Toggle against the authored closed angle, independent of hinge handedness. */
+export function toggleDoorMotor(door: RuntimeDoor): 'open' | 'close' {
+  const openAngle = Math.abs(door.minAngle - door.closedAngle) > Math.abs(door.maxAngle - door.closedAngle)
+    ? door.minAngle
+    : door.maxAngle;
+  const opening = Math.abs(door.angle - door.closedAngle) <= Math.abs(door.angle - openAngle);
+  door.motorTarget = opening ? openAngle : door.closedAngle;
+  return opening ? 'open' : 'close';
 }
 
 export function pushDoor(door: RuntimeDoor, player: Vec2, velocity: Vec2) {

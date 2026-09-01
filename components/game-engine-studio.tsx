@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { GameCanvas, type CameraMode } from './game-canvas';
 import { buildingScene } from '@/engine/demo-scene';
+import { auditAssetQuality } from '@/engine/asset-quality';
 import type { AssetRecipe } from '@/engine/types';
 
 const kindIcon = {
@@ -33,6 +34,10 @@ export function GameEngineStudio() {
   const selected = useMemo(
     () => buildingScene.assets.find((asset) => asset.id === selectedId) ?? buildingScene.assets[0],
     [selectedId],
+  );
+  const qualityAudit = useMemo(
+    () => selected.geometry?.qualityTier ? auditAssetQuality(selected, buildingScene.assets) : null,
+    [selected],
   );
 
   const changeFloor = useCallback((index: number) => {
@@ -177,10 +182,12 @@ export function GameEngineStudio() {
             <p>{selected.description}</p>
             <div className="metrics">
               <span><small>物理尺寸</small><b>{selected.physicalSize.x} × {selected.physicalSize.y}m</b></span>
-              <span><small>{selected.atlas ? '动画' : '用途'}</small><b>{selected.atlas ? `${selected.atlas.columns}×${selected.atlas.rows} @ ${selected.atlas.fps}` : selected.usage ?? 'recipe'}</b></span>
+              <span><small>{qualityAudit ? '生产质量' : selected.atlas ? '动画' : '用途'}</small><b>{qualityAudit ? `${qualityAudit.tier?.toUpperCase()} · ${qualityAudit.score}/100` : selected.atlas ? `${selected.atlas.columns}×${selected.atlas.rows} @ ${selected.atlas.fps}` : selected.usage ?? 'recipe'}</b></span>
             </div>
+            {qualityAudit && <div className="prompt-preview">质量门禁：{qualityAudit.ready ? 'PRODUCTION READY' : qualityAudit.issues.join(' / ')}</div>}
             {selected.referenceStudy && <div className="prompt-preview">学习：{selected.referenceStudy.learn.join(' / ')} · 运行时规则：不直接渲染整图</div>}
-            {selected.geometry && <div className="prompt-preview">建模：{selected.geometry.source} · {(selected.geometry.independentlyModeledParts ?? []).join(' / ')}</div>}
+            {selected.geometry && <div className="prompt-preview">建模：{selected.geometry.source}{selected.geometry.blueprintId ? ` · ${selected.geometry.blueprintId}` : ''} · {(selected.geometry.independentlyModeledParts ?? []).join(' / ')}</div>}
+            {selected.pbr && <div className="prompt-preview">PBR：base-color / {selected.pbr.normalAsset ? 'normal' : '—'} / {selected.pbr.roughnessAsset ? 'roughness' : '—'} · {selected.pbr.texelDensityPxPerMeter}px/m</div>}
             {selected.animation && <div className="prompt-preview">动画：{selected.animation.skeleton} · {selected.animation.clips.map((clip) => `${clip.id}:${clip.status === 'implemented' ? '✓' : '待做'}`).join(' / ')}</div>}
             {selected.texture && <div className="prompt-preview">贴图：{selected.texture.semantic} · {selected.texture.tileable ? '无缝平铺' : '单次映射'} · {selected.texture.metersPerTile.x}m/块</div>}
             {selected.interaction && <div className="prompt-preview">交互：{selected.interaction.actions.join(' / ')} · {selected.interaction.states.map((state) => state.label).join(' → ')}</div>}

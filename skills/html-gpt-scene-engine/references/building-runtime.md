@@ -17,14 +17,6 @@ Keep a floor's geometry in local coordinates and preserve actor state when unloa
 
 Model stairs as walkable ramps or stepped surfaces plus a portal at each reachable end. Store the travel axis, uphill direction, physical rise, upper/lower floor IDs, and destination landing anchors. While the actor is inside the flight, derive vertical root height from normalized progress and blend a stair locomotion pose from actual movement. Trigger streaming only when velocity points through the corresponding end band. Place the actor on a clear destination landing and disarm the portal until the actor exits its trigger, so a held key cannot cascade through several floors. Keep direct floor-selection UI and explicit up/down keys as editor/debug paths, not the primary play interaction.
 
-## Stair portals
-
-Model stairs as walkable ramps or stepped surfaces plus a portal at each reachable end. Store the travel axis, uphill direction, physical rise, upper/lower floor IDs, and destination landing anchors. While the actor is inside the flight, derive vertical root height from normalized progress and blend a stair locomotion pose from actual movement. Trigger streaming only when velocity points through the corresponding end band. Place the actor on a clear destination landing and disarm the portal until the actor exits its trigger, so a held key cannot cascade through several floors. Keep direct floor-selection UI and explicit up/down keys as editor/debug paths, not the primary play interaction.
-
-## Collision policy
-
-Inventory collision separately from visuals and interactions. Walls, substantial furniture, movable chairs, and standing occupants are usually blocking bodies; stair portals and rugs are usually pass-through triggers. State-linked parts such as open drawers may need a different shape from their closed state. Move saved colliders with their instance transform and resolve diagonal motion with axis sliding so actors do not stick at corners.
-
 ## Collision policy
 
 Inventory collision separately from visuals and interactions. Walls, substantial furniture, movable chairs, and standing occupants are usually blocking bodies; stair portals and rugs are usually pass-through triggers. State-linked parts such as open drawers may need a different shape from their closed state. Move saved colliders with their instance transform and resolve diagonal motion with axis sliding so actors do not stick at corners.
@@ -51,12 +43,6 @@ Separate:
 - animation clip.
 
 Do not encode “hostile-looking” appearance as role truth. Unknown occupants should become identified through behavior, game rules, or authored state transitions.
-
-Patrol and investigate behaviors require navigation waypoints or a navigation mesh, persistent actor position, collision against props and other actors, and a locomotion clip blended from actual movement speed. An in-place walk cycle is an animation preview, not navigation.
-
-## Interaction targeting
-
-Select one stable target using distance plus facing, reject targets hidden behind blocking walls, and show which target will receive input. Use a short actor-level busy interval for hinged, sliding, searching, or pickup actions. This serializes the actor's operation without forcing sibling parts to share one state; multiple cabinet children may remain independently open after separate completed actions.
 
 Patrol and investigate behaviors require navigation waypoints or a navigation mesh, persistent actor position, collision against props and other actors, and a locomotion clip blended from actual movement speed. An in-place walk cycle is an animation preview, not navigation.
 

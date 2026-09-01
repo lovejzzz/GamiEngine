@@ -19,20 +19,17 @@ Build a playable scene system, not a flattened picture. GPT-generated pixels mus
 - Classify interaction before generating any prop. Record actions, independent state IDs, motion model, collision/occlusion changes, and the asset needed for every visually distinct state.
 - Classify collision independently from interaction and visibility. Every substantial body needs an explicit `blocking`, `trigger`, or `pass-through` policy; never assume a table, chair, occupant, or generated silhouette is non-blocking because it lacks an interaction.
 - Gate interactions by distance, actor facing, and wall/door visibility. Give long actions a busy interval and visible target feedback so input spam cannot make one actor operate several parts simultaneously.
-- Classify collision independently from interaction and visibility. Every substantial body needs an explicit `blocking`, `trigger`, or `pass-through` policy; never assume a table, chair, occupant, or generated silhouette is non-blocking because it lacks an interaction.
-- Gate interactions by distance, actor facing, and wall/door visibility. Give long actions a busy interval and visible target feedback so input spam cannot make one actor operate several parts simultaneously.
 - Decompose compound props into independently addressable child parts. A kitchen is a cabinet carcass plus individual doors and drawers; interacting with one child must never implicitly open every sibling.
 - Do not merge independently movable objects into one bitmap. Tables and chairs, shelves and loose boxes, or a bed and an under-bed drawer require separate instances when gameplay can move or reveal them.
 - In 3D, classify every generated image as either `reference-study`, `runtime-texture`, or an explicit `runtime-sprite`. A reference study teaches silhouette, proportion, construction, material zones, palette, and wear; never render it directly as 3D geometry.
 - Treat a whole-environment art study as a measurable art-direction contract. Extract palette, warm/cool light hierarchy, material zones, human-scale proportions, construction details, and localized wear into the manifest before changing runtime geometry; do not merely place the study in an asset browser and call the scene art-directed.
-- Treat a whole-environment art study as a measurable art-direction contract. Extract palette, warm/cool light hierarchy, material zones, human-scale proportions, construction details, and localized wear into the manifest before changing runtime geometry; do not merely place the study in an asset browser and call the scene art-directed.
 - Geometry, UVs, pivots, joints, child-part boundaries, collision, LOD, and save-state IDs are engine-owned. Runtime textures may color those meshes, but must not contain object silhouettes, baked lighting, hardware, seams that should move, or interaction state.
+- A polished reference is not a finished asset. A `hero` object needs identity-consistent orthographic views, measured dimensions, either a structured procedural blueprint or validated glTF, separately generated PBR maps, and declared bevel, texel-density, triangle, draw-call, and LOD budgets. Reject it from production when any bridge is missing.
 
 ## Workflow
 
 1. Inspect the existing engine, package scripts, scene format, assets, and rendering stack. Preserve the established stack unless it blocks required behavior.
 2. Create or update the building/scene graph first. For multi-floor work, each floor is independently loadable and stairs/portals explicitly connect floor IDs.
-   A playable stair needs a walkable trigger volume, travel axis, uphill direction, rise, upper/lower target IDs, safe arrival anchor, and re-entry guard. Drive actor root height from normalized stair progress, then stream floors only at the matching end of the flight; a key-only floor teleport is a temporary debug fallback.
    A playable stair needs a walkable trigger volume, travel axis, uphill direction, rise, upper/lower target IDs, safe arrival anchor, and re-entry guard. Drive actor root height from normalized stair progress, then stream floors only at the matching end of the flight; a key-only floor teleport is a temporary debug fallback.
 3. Define asset recipes with physical size, pivot, generation prompt, source, state, and material metadata. Read [scene-schema.md](references/scene-schema.md) when adding or changing the manifest format.
    Before generation, complete an interaction inventory for every prop: `none`, `inspect`, `open`, `search`, `push`, `pickup`, `hide`, `break`, `toggle`, or a project extension. Derive the required asset/state matrix from that inventory.
@@ -53,7 +50,6 @@ Sprite-based walking characters need real frame assets. A static image with CSS 
 - Store atlas columns, rows, direction order, FPS, pivot, and physical footprint in the manifest.
 - For a 3D rig, store skeleton/part IDs, clips, duration or FPS, root-motion policy, and collider footprint. At minimum animate opposing arms/legs for locomotion and provide a stable idle pose.
 - Blend into and out of locomotion instead of snapping joint angles. A patrol clip is valid only when the actor changes navigation position; sleeping, hiding, sitting, pushing, and searching need distinct poses or clips rather than a rotated standing cycle.
-- Blend into and out of locomotion instead of snapping joint angles. A patrol clip is valid only when the actor changes navigation position; sleeping, hiding, sitting, pushing, and searching need distinct poses or clips rather than a rotated standing cycle.
 - A visible checkerboard is not proof of transparency. Verify PNG alpha. Fractional cell dimensions are allowed only if the renderer slices with floating-point source rectangles; otherwise pad or regenerate the atlas.
 
 ## Quality bar
@@ -63,8 +59,7 @@ Judge two independent outcomes:
 - Visual: consistent projection, scale, palette, alpha edges where used, coherent 3D silhouette and proportions, material response, and no baked effects that conflict at runtime.
 - Simulation: all spaces are traversable as intended; walls and doors block correctly; door front/back choice follows camera/side; floor transitions preserve state; occupants and animation remain data-driven.
 - Stair traversal: approach from the intended landing, walk the full flight in both directions, verify visible vertical actor motion and stair locomotion, change floors only at an end trigger, spawn clear of the destination trigger, and confirm held movement cannot skip multiple floors.
-- Stair traversal: approach from the intended landing, walk the full flight in both directions, verify visible vertical actor motion and stair locomotion, change floors only at an end trigger, spawn clear of the destination trigger, and confirm held movement cannot skip multiple floors.
-- Collision audit: walk directly into every substantial prop and occupant, then move diagonally along its edge. Verify blocking bodies stop overlap, pass-through portals remain usable, and moving props carry their colliders with their saved transform.
+- Asset fidelity: inspect representative `hero` objects close-up in the running renderer. Compare silhouette, construction, edge softness, material-zone boundaries, micro-surface response, scale, and wear to the approved multi-view study; a thumbnail in the asset browser is not evidence.
 - Collision audit: walk directly into every substantial prop and occupant, then move diagonally along its edge. Verify blocking bodies stop overlap, pass-through portals remain usable, and moving props carry their colliders with their saved transform.
 
 Do not reproduce a copyrighted game level room-for-room when a user gives it as a reference. Extract the desired design qualities and create an original layout, cast, and asset identity.

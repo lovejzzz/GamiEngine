@@ -6,6 +6,8 @@ Use this pipeline when generated images define the aesthetic of a 3D browser sce
 
 Generate one coherent object reference under the project style lock. Ask for legible silhouette, believable proportions, construction seams, separate interactive parts, material zones, palette, and wear. Avoid franchise identity and avoid combining unrelated movable objects.
 
+For a `hero` asset, use identity-consistent orthographic front/back/side/top views at one scale. Treat them as measurements, not mood boards. If view identity drifts, regenerate before modeling; do not average contradictory shapes into a crude mesh.
+
 Record only facts that can be modeled consistently:
 
 - bounding dimensions and primary proportions;
@@ -15,8 +17,6 @@ Record only facts that can be modeled consistently:
 - repeated motifs, edge radius, thickness, hardware scale, and wear locations.
 
 Do not photogrammetrically copy accidental lighting, perspective distortion, background context, or impossible geometry from the generated image.
-
-For a whole-room or whole-building study, write an art-direction extraction record before modeling: dominant and accent colors, warm/cool light hierarchy, wall/floor/furniture material zones, human-scale reference dimensions, trim and hardware language, and where wear is allowed to accumulate. The renderer must demonstrate those extracted rules in play; storing a thumbnail alone is not integration.
 
 For a whole-room or whole-building study, write an art-direction extraction record before modeling: dominant and accent colors, warm/cool light hierarchy, wall/floor/furniture material zones, human-scale reference dimensions, trim and hardware language, and where wear is allowed to accumulate. The renderer must demonstrate those extracted rules in play; storing a thumbnail alone is not integration.
 
@@ -32,14 +32,18 @@ Generate neutral-lit seamless maps by material zone, not by whole object. Start 
 
 Map the materials onto UV-authored geometry. Lighting, cast shadows, fog, night vision, damage overlays, selection, and interaction highlights remain runtime effects.
 
-## 4. Animate and persist
+## 4. Cross the production bridge
+
+Choose the bridge by asset class: structured architecture, stairs, doors, and cabinets usually compile from measured parametric blueprints; irregular static props may use an image-to-3D or authored glTF cleanup path; characters reuse a shared rig and authored clips. Preserve a renderer-safe procedural fallback.
+
+Before marking a `hero` asset production-ready, require: reference view metadata; physical dimensions and pivots; a blueprint ID or validated glTF source; independent gameplay parts; base-color, normal, and roughness maps where appropriate; texel density; minimum bevel; triangle and draw-call budgets; at least one runtime LOD; and close-up browser inspection. A polished source image with no geometry bridge must fail the gate.
+
+## 5. Animate and persist
 
 Doors rotate around engine hinges, drawers translate along engine axes, and characters use articulated rigs or verified atlases. Save state by `parentId:partId`; rebuilding or streaming a floor must reapply every transform and visibility state without consulting image pixels.
 
 Before producing a character, keep a clip inventory in the asset recipe with a shared skeleton ID, root-motion policy, duration, loop mode, and `implemented` or `required` status. At minimum separate idle and locomotion; add pushing, searching, stairs, crouching, sleeping, hiding, surrendering, or other poses when the scene actually uses them. Reference images define anatomy and costume, not joint tracks.
 
-Before producing a character, keep a clip inventory in the asset recipe with a shared skeleton ID, root-motion policy, duration, loop mode, and `implemented` or `required` status. At minimum separate idle and locomotion; add pushing, searching, stairs, crouching, sleeping, hiding, surrendering, or other poses when the scene actually uses them. Reference images define anatomy and costume, not joint tracks.
-
-## 5. Validate in play
+## 6. Validate in play
 
 Walk through the complete space with the actual input scheme. Test collision at corners, pushing both sides of doors, nearest-child selection, one-child-only changes, floor transitions, state restoration, follow/editor cameras, low viewport sizes, missing textures, and console errors. Inspect both visual plausibility and simulation correctness.
