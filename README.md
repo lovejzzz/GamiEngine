@@ -7,12 +7,12 @@ The included demo is an original four-floor townhouse built around tense, room-b
 ## What is working
 
 - Three.js cutaway renderer with editor-orbit and player-follow cameras
-- Four independently streamed floors connected by explicit stair portals
+- Four independently streamed floors connected by walkable stair portals with visible elevation and safe landing anchors
 - WASD movement, wall/prop collision, pushable two-sided hinge doors, and door motors
 - Nearest-target interaction with independent cabinet doors and drawers
 - Persistent door, prop, child-part, and moved-object state across floor streaming
 - Articulated 3D operator/resident rigs with procedural walk cycles and behavior poses
-- Directional moonlight, dynamic player flashlight shadows, room fill lights, fog, ACES tone mapping, and night vision
+- Generated whole-building art-direction study translated into cool window light, warm practical pools, wainscot, dark walnut stairs, room dressing, fog, ACES tone mapping, and night vision
 - GPT asset lab and server-only image-generation route
 - Manifest-enforced separation of `reference-study`, `runtime-texture`, and `runtime-sprite`
 - Procedural fallbacks so the scene stays playable when generated art is unavailable
@@ -40,10 +40,10 @@ To enable the Asset Lab generation button, set `OPENAI_API_KEY` only in the serv
 
 | Input | Action |
 | --- | --- |
-| `W A S D` / arrows | Walk |
+| `W A S D` / arrows | Walk; continue along a stair flight to change floors automatically |
 | `E` | Open/close the nearest door; physical contact can also push it |
 | `Q` | Use the nearest prop or one independent child part |
-| `R` / `F` | Go up/down while standing on stairs |
+| `R` / `F` | Optional stair up/down accessibility shortcut |
 | Camera button | Switch editor orbit / player follow |
 | NV button | Toggle night vision |
 | Collision button | Toggle collider outlines |
@@ -51,7 +51,7 @@ To enable the Asset Lab generation button, set `OPENAI_API_KEY` only in the serv
 ## The image-to-3D contract
 
 ```text
-generated reference study ──learn──> silhouette / proportion / material zones
+generated reference study ──learn──> silhouette / proportion / material zones / palette / light hierarchy
                                          │
                                          v
                               procedural mesh or glTF

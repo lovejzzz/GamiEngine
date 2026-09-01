@@ -51,6 +51,29 @@ const door = (
 
 export const assetRecipes: AssetRecipe[] = [
   {
+    id: 'reference.townhouse-art-direction-v1',
+    name: '联排住宅美术总参考',
+    kind: 'prop',
+    description: '统一房屋的色温、材质分区、家具比例、磨损语言与楼梯构造；整图永不进入运行时渲染。',
+    prompt: 'Original premium four-storey London townhouse cutaway at night, cool moonlight and warm practical lights, aged ivory plaster, dark walnut, muted olive and oxblood accents, readable separately constructed doors, drawers and staircase.',
+    source: '/assets/reference-townhouse-art-direction-v1.png',
+    usage: 'reference-study',
+    state: 'ready',
+    side: 'top',
+    physicalSize: { x: 12, y: 7.5 },
+    pivot: { x: 0.5, y: 0.5 },
+    referenceStudy: {
+      source: '/assets/reference-townhouse-art-direction-v1.png',
+      learn: ['proportion', 'material-zones', 'wear-language', 'color-palette'],
+      runtimeRule: 'never-render-directly',
+    },
+    geometry: {
+      source: 'procedural',
+      primitiveFamily: 'streamed-townhouse-floor-kit',
+      independentlyModeledParts: ['walls', 'wainscot', 'windows', 'stairs', 'railings', 'doors', 'furniture'],
+    },
+  },
+  {
     id: 'floor.herringbone',
     name: '旧人字木地板',
     kind: 'tile',
@@ -293,8 +316,8 @@ export const assetRecipes: AssetRecipe[] = [
     usage: 'reference-study',
     physicalSize: { x: 1.35, y: 2.2 }, pivot: { x: .5, y: .5 },
     referenceStudy: { source: '/assets/prop-stairs-v2.png', learn: ['silhouette', 'proportion', 'material-zones', 'wear-language'], runtimeRule: 'never-render-directly' },
-    geometry: { source: 'procedural', primitiveFamily: 'straight-staircase', independentlyModeledParts: ['treads', 'risers'] },
-    interaction: interaction('R/F 上下楼', ['traverse'], [{ id: 'ready', label: '可通行', asset: 'prop.stairs' }], 'portal'),
+    geometry: { source: 'procedural', primitiveFamily: 'straight-staircase', independentlyModeledParts: ['treads', 'risers', 'newel-posts', 'balusters', 'handrails'] },
+    interaction: interaction('沿踏步走到楼梯尽头切换楼层', ['traverse'], [{ id: 'ready', label: '自动通行', asset: 'prop.stairs' }], 'portal'),
   },
   {
     id: 'character.operator',
@@ -351,17 +374,17 @@ export const buildingScene: BuildingScene = {
   world: { width: 960, height: 620, pixelsPerMeter: 80 },
   renderer: { mode: '3d', engine: 'three', floorStreaming: true, defaultCamera: 'editor' },
   styleLock: {
-    id: 'grounded-night-townhouse-v1',
+    id: 'moonlit-lived-in-townhouse-v2',
     projection: '3D cutaway building with editor orbit and player-follow camera',
     lighting: 'generated images are neutral material studies; Three.js owns all runtime light, shadow and night vision',
-    palette: 'aged London townhouse, muted domestic colors, dark tactical equipment',
+    palette: 'charcoal green and smoke blue shadows, aged ivory plaster, dark walnut, oxblood, muted olive, tarnished brass',
     negative: 'no franchise characters, no perspective, no complete room scene, no baked cast shadows, no text, no watermark',
   },
   assets: assetRecipes,
   floors: [
     {
       id: 'b1', index: 0, name: 'B1', subtitle: '地下室 · 设备 / 储藏', spawn: { x: 245, y: 455 },
-      stairs: { id: 'stairs-b1', x: 112, y: 370, width: 108, height: 155, toUp: 'f1' },
+      stairs: { id: 'stairs-b1', x: 112, y: 370, width: 108, height: 155, toUp: 'f1', autoTraverse: true, upDirection: 'north', rise: 1.04 },
       rooms: [
         { id: 'boiler', name: '锅炉间', purpose: 'utility', x: 108, y: 68, width: 270, height: 270, floorAsset: 'floor.concrete', tint: 'rgba(40,64,55,.12)' },
         { id: 'store', name: '储藏间', purpose: 'storage', x: 396, y: 68, width: 456, height: 270, floorAsset: 'floor.concrete', tint: 'rgba(48,51,46,.12)' },
@@ -381,7 +404,7 @@ export const buildingScene: BuildingScene = {
     },
     {
       id: 'f1', index: 1, name: '1F', subtitle: '入口 · 厨房 / 起居', spawn: { x: 245, y: 455 },
-      stairs: { id: 'stairs-f1', x: 112, y: 352, width: 108, height: 176, toUp: 'f2', toDown: 'b1' },
+      stairs: { id: 'stairs-f1', x: 112, y: 352, width: 108, height: 176, toUp: 'f2', toDown: 'b1', autoTraverse: true, upDirection: 'north', rise: 1.08 },
       rooms: [
         { id: 'foyer', name: '入口厅', purpose: 'entry', x: 108, y: 68, width: 200, height: 266, floorAsset: 'floor.herringbone', tint: 'rgba(48,62,55,.07)' },
         { id: 'living', name: '起居室', purpose: 'living', x: 326, y: 68, width: 280, height: 266, floorAsset: 'floor.herringbone', tint: 'rgba(89,64,48,.06)' },
@@ -410,11 +433,16 @@ export const buildingScene: BuildingScene = {
         { id: 'f1-chair-b', name: '餐椅 B', asset: 'prop.chair', position: { x: 725, y: 454 }, size: { x: 48, y: 48 }, rotation: -Math.PI / 2, collider: { width: 38, height: 38 }, interaction: assetRecipes.find((item) => item.id === 'prop.chair')?.interaction },
         { id: 'f1-stairs-prop', name: '主楼梯', asset: 'prop.stairs', position: { x: 166, y: 440 }, size: { x: 96, y: 166 }, collider: { width: 96, height: 166, blocksMovement: false } },
       ],
-      lights: [{ id: 'f1-lamp', position: { x: 470, y: 190 }, radius: 210, intensity: .74, enabled: true }, { id: 'f1-kitchen-light', position: { x: 744, y: 210 }, radius: 150, intensity: .58, enabled: false }],
+      lights: [
+        { id: 'f1-lamp', position: { x: 470, y: 190 }, radius: 210, intensity: .74, enabled: true },
+        { id: 'f1-kitchen-light', position: { x: 744, y: 210 }, radius: 155, intensity: .42, enabled: true },
+        { id: 'f1-stair-sconce', position: { x: 244, y: 408 }, radius: 125, intensity: .34, enabled: true },
+        { id: 'f1-dining-pendant', position: { x: 620, y: 454 }, radius: 185, intensity: .38, enabled: true },
+      ],
     },
     {
       id: 'f2', index: 2, name: '2F', subtitle: '卧室 · 浴室 / 住户', spawn: { x: 245, y: 455 },
-      stairs: { id: 'stairs-f2', x: 112, y: 352, width: 108, height: 176, toUp: 'f3', toDown: 'f1' },
+      stairs: { id: 'stairs-f2', x: 112, y: 352, width: 108, height: 176, toUp: 'f3', toDown: 'f1', autoTraverse: true, upDirection: 'north', rise: 1.08 },
       rooms: [
         { id: 'bed-a', name: '前卧室', purpose: 'bedroom', x: 108, y: 68, width: 294, height: 266, floorAsset: 'floor.carpet', tint: 'rgba(46,58,53,.24)' },
         { id: 'bath', name: '浴室', purpose: 'bathroom', x: 420, y: 68, width: 182, height: 266, floorAsset: 'floor.checker', tint: 'rgba(52,72,72,.1)' },
@@ -439,11 +467,15 @@ export const buildingScene: BuildingScene = {
         { id: 'f2-bed-b-prop', name: '后卧室床铺', asset: 'prop.bed', position: { x: 730, y: 170 }, size: { x: 120, y: 150 }, collider: { width: 104, height: 136 }, interaction: assetRecipes.find((item) => item.id === 'prop.bed')?.interaction },
         { id: 'f2-stairs-prop', name: '二层楼梯', asset: 'prop.stairs', position: { x: 166, y: 440 }, size: { x: 96, y: 166 }, collider: { width: 96, height: 166, blocksMovement: false } },
       ],
-      lights: [{ id: 'f2-hall', position: { x: 320, y: 380 }, radius: 170, intensity: .5, enabled: true }, { id: 'f2-bed', position: { x: 710, y: 175 }, radius: 170, intensity: .42, enabled: false }],
+      lights: [
+        { id: 'f2-hall', position: { x: 320, y: 380 }, radius: 170, intensity: .5, enabled: true },
+        { id: 'f2-bed', position: { x: 710, y: 175 }, radius: 150, intensity: .29, enabled: true },
+        { id: 'f2-nursery-nightlight', position: { x: 670, y: 455 }, radius: 175, intensity: .25, enabled: true },
+      ],
     },
     {
       id: 'f3', index: 3, name: '3F', subtitle: '阁楼 · 工作室 / 储物', spawn: { x: 245, y: 455 },
-      stairs: { id: 'stairs-f3', x: 112, y: 352, width: 108, height: 176, toDown: 'f2' },
+      stairs: { id: 'stairs-f3', x: 112, y: 352, width: 108, height: 176, toDown: 'f2', autoTraverse: true, upDirection: 'north', rise: 1.08 },
       rooms: [
         { id: 'loft', name: '阁楼工作室', purpose: 'studio', x: 108, y: 68, width: 494, height: 266, floorAsset: 'floor.herringbone', tint: 'rgba(45,58,51,.08)' },
         { id: 'attic-store', name: '封闭储物间', purpose: 'storage', x: 620, y: 68, width: 232, height: 266, floorAsset: 'floor.herringbone', tint: 'rgba(45,46,42,.13)' },
@@ -465,7 +497,10 @@ export const buildingScene: BuildingScene = {
         { id: 'f3-chair', name: '工作椅', asset: 'prop.chair', position: { x: 420, y: 270 }, size: { x: 50, y: 50 }, collider: { width: 40, height: 40 }, interaction: assetRecipes.find((item) => item.id === 'prop.chair')?.interaction },
         { id: 'f3-stairs-prop', name: '阁楼楼梯', asset: 'prop.stairs', position: { x: 166, y: 440 }, size: { x: 96, y: 166 }, collider: { width: 96, height: 166, blocksMovement: false } },
       ],
-      lights: [{ id: 'f3-desk', position: { x: 405, y: 180 }, radius: 190, intensity: .48, enabled: true }],
+      lights: [
+        { id: 'f3-desk', position: { x: 405, y: 180 }, radius: 190, intensity: .48, enabled: true },
+        { id: 'f3-landing', position: { x: 245, y: 430 }, radius: 155, intensity: .3, enabled: true },
+      ],
     },
   ],
 };

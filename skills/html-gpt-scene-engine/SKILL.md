@@ -24,12 +24,16 @@ Build a playable scene system, not a flattened picture. GPT-generated pixels mus
 - Decompose compound props into independently addressable child parts. A kitchen is a cabinet carcass plus individual doors and drawers; interacting with one child must never implicitly open every sibling.
 - Do not merge independently movable objects into one bitmap. Tables and chairs, shelves and loose boxes, or a bed and an under-bed drawer require separate instances when gameplay can move or reveal them.
 - In 3D, classify every generated image as either `reference-study`, `runtime-texture`, or an explicit `runtime-sprite`. A reference study teaches silhouette, proportion, construction, material zones, palette, and wear; never render it directly as 3D geometry.
+- Treat a whole-environment art study as a measurable art-direction contract. Extract palette, warm/cool light hierarchy, material zones, human-scale proportions, construction details, and localized wear into the manifest before changing runtime geometry; do not merely place the study in an asset browser and call the scene art-directed.
+- Treat a whole-environment art study as a measurable art-direction contract. Extract palette, warm/cool light hierarchy, material zones, human-scale proportions, construction details, and localized wear into the manifest before changing runtime geometry; do not merely place the study in an asset browser and call the scene art-directed.
 - Geometry, UVs, pivots, joints, child-part boundaries, collision, LOD, and save-state IDs are engine-owned. Runtime textures may color those meshes, but must not contain object silhouettes, baked lighting, hardware, seams that should move, or interaction state.
 
 ## Workflow
 
 1. Inspect the existing engine, package scripts, scene format, assets, and rendering stack. Preserve the established stack unless it blocks required behavior.
 2. Create or update the building/scene graph first. For multi-floor work, each floor is independently loadable and stairs/portals explicitly connect floor IDs.
+   A playable stair needs a walkable trigger volume, travel axis, uphill direction, rise, upper/lower target IDs, safe arrival anchor, and re-entry guard. Drive actor root height from normalized stair progress, then stream floors only at the matching end of the flight; a key-only floor teleport is a temporary debug fallback.
+   A playable stair needs a walkable trigger volume, travel axis, uphill direction, rise, upper/lower target IDs, safe arrival anchor, and re-entry guard. Drive actor root height from normalized stair progress, then stream floors only at the matching end of the flight; a key-only floor teleport is a temporary debug fallback.
 3. Define asset recipes with physical size, pivot, generation prompt, source, state, and material metadata. Read [scene-schema.md](references/scene-schema.md) when adding or changing the manifest format.
    Before generation, complete an interaction inventory for every prop: `none`, `inspect`, `open`, `search`, `push`, `pickup`, `hide`, `break`, `toggle`, or a project extension. Derive the required asset/state matrix from that inventory.
 4. Design the generation pipeline. Read [asset-pipeline.md](references/asset-pipeline.md) whenever generating textures, two-sided doors, transparent props, characters, or animation. For a 3D renderer, also read [3d-pipeline.md](references/3d-pipeline.md).
@@ -58,6 +62,8 @@ Judge two independent outcomes:
 
 - Visual: consistent projection, scale, palette, alpha edges where used, coherent 3D silhouette and proportions, material response, and no baked effects that conflict at runtime.
 - Simulation: all spaces are traversable as intended; walls and doors block correctly; door front/back choice follows camera/side; floor transitions preserve state; occupants and animation remain data-driven.
+- Stair traversal: approach from the intended landing, walk the full flight in both directions, verify visible vertical actor motion and stair locomotion, change floors only at an end trigger, spawn clear of the destination trigger, and confirm held movement cannot skip multiple floors.
+- Stair traversal: approach from the intended landing, walk the full flight in both directions, verify visible vertical actor motion and stair locomotion, change floors only at an end trigger, spawn clear of the destination trigger, and confirm held movement cannot skip multiple floors.
 - Collision audit: walk directly into every substantial prop and occupant, then move diagonally along its edge. Verify blocking bodies stop overlap, pass-through portals remain usable, and moving props carry their colliders with their saved transform.
 - Collision audit: walk directly into every substantial prop and occupant, then move diagonally along its edge. Verify blocking bodies stop overlap, pass-through portals remain usable, and moving props carry their colliders with their saved transform.
 

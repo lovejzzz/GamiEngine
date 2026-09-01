@@ -1,4 +1,4 @@
-import type { RectSpec, Vec2 } from './types';
+import type { FloorSpec, RectSpec, Vec2 } from './types';
 
 export type CircleCollider = {
   id: string;
@@ -146,4 +146,40 @@ export function pushDoor(door: RuntimeDoor, player: Vec2, velocity: Vec2) {
 
 export function nearestFloorIndex(current: number, direction: 1 | -1, count: number) {
   return clamp(current + direction, 0, count - 1);
+}
+
+type StairSpec = FloorSpec['stairs'];
+
+/** 0 is the low landing and 1 is the high landing, independent of stair orientation. */
+export function stairProgress(point: Vec2, stairs: StairSpec) {
+  const horizontal = stairs.upDirection === 'east' || stairs.upDirection === 'west';
+  const position = horizontal ? point.x : point.y;
+  const start = horizontal ? stairs.x : stairs.y;
+  const length = horizontal ? stairs.width : stairs.height;
+  const positive = stairs.upDirection === 'east' || stairs.upDirection === 'south';
+  const local = clamp((position - start) / length, 0, 1);
+  return positive ? local : 1 - local;
+}
+
+/**
+ * Return a floor direction only after the actor has walked to the matching end
+ * of the stair flight while still moving along its axis.
+ */
+export function stairTraversalDirection(
+  point: Vec2,
+  velocity: Vec2,
+  stairs: StairSpec,
+  edgeFraction = 0.1,
+): 1 | -1 | null {
+  const inside = point.x >= stairs.x && point.x <= stairs.x + stairs.width &&
+    point.y >= stairs.y && point.y <= stairs.y + stairs.height;
+  if (!stairs.autoTraverse || !inside) return null;
+  const horizontal = stairs.upDirection === 'east' || stairs.upDirection === 'west';
+  const axisVelocity = horizontal ? velocity.x : velocity.y;
+  const positive = stairs.upDirection === 'east' || stairs.upDirection === 'south';
+  const uphillVelocity = positive ? axisVelocity : -axisVelocity;
+  const progress = stairProgress(point, stairs);
+  if (progress >= 1 - edgeFraction && uphillVelocity > 0) return stairs.toUp ? 1 : null;
+  if (progress <= edgeFraction && uphillVelocity < 0) return stairs.toDown ? -1 : null;
+  return null;
 }

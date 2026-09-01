@@ -9,10 +9,19 @@ describe('Gami Engine demo manifest', () => {
     expect(buildingScene.renderer).toMatchObject({ mode: '3d', engine: 'three', floorStreaming: true });
     expect(buildingScene.floors.map((floor) => floor.id)).toEqual(['b1', 'f1', 'f2', 'f3']);
     for (const floor of buildingScene.floors) {
+      expect(floor.stairs.autoTraverse).toBe(true);
+      expect(floor.stairs.rise).toBeGreaterThan(0);
       for (const target of [floor.stairs.toUp, floor.stairs.toDown].filter(Boolean)) {
         expect(buildingScene.floors.some((candidate) => candidate.id === target)).toBe(true);
       }
     }
+  });
+
+  it('keeps the art-direction study as modeling input only', () => {
+    const study = assets.get('reference.townhouse-art-direction-v1');
+    expect(study?.usage).toBe('reference-study');
+    expect(study?.referenceStudy?.runtimeRule).toBe('never-render-directly');
+    expect(study?.geometry?.independentlyModeledParts).toContain('stairs');
   });
 
   it('resolves every runtime cross-reference', () => {

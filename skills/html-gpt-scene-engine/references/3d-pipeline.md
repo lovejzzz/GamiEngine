@@ -16,6 +16,10 @@ Record only facts that can be modeled consistently:
 
 Do not photogrammetrically copy accidental lighting, perspective distortion, background context, or impossible geometry from the generated image.
 
+For a whole-room or whole-building study, write an art-direction extraction record before modeling: dominant and accent colors, warm/cool light hierarchy, wall/floor/furniture material zones, human-scale reference dimensions, trim and hardware language, and where wear is allowed to accumulate. The renderer must demonstrate those extracted rules in play; storing a thumbnail alone is not integration.
+
+For a whole-room or whole-building study, write an art-direction extraction record before modeling: dominant and accent colors, warm/cool light hierarchy, wall/floor/furniture material zones, human-scale reference dimensions, trim and hardware language, and where wear is allowed to accumulate. The renderer must demonstrate those extracted rules in play; storing a thumbnail alone is not integration.
+
 ## 2. Build interaction-aware geometry
 
 Create the static carcass and every gameplay-relevant moving child as separate meshes. Give each child a stable ID shared by the scene manifest, interaction state, animation track, collider, and save record. A visible seam is not enough: if a player can open it, the part needs real thickness, interior/reveal geometry, and a hinge or slide axis.

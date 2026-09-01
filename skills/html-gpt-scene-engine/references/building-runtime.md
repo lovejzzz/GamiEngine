@@ -13,6 +13,14 @@ Model the building as a graph:
 
 Keep a floor's geometry in local coordinates and preserve actor state when unloading it. Avoid rendering all floors superimposed; select one active floor and optionally show adjacent floors as debug context.
 
+## Stair portals
+
+Model stairs as walkable ramps or stepped surfaces plus a portal at each reachable end. Store the travel axis, uphill direction, physical rise, upper/lower floor IDs, and destination landing anchors. While the actor is inside the flight, derive vertical root height from normalized progress and blend a stair locomotion pose from actual movement. Trigger streaming only when velocity points through the corresponding end band. Place the actor on a clear destination landing and disarm the portal until the actor exits its trigger, so a held key cannot cascade through several floors. Keep direct floor-selection UI and explicit up/down keys as editor/debug paths, not the primary play interaction.
+
+## Stair portals
+
+Model stairs as walkable ramps or stepped surfaces plus a portal at each reachable end. Store the travel axis, uphill direction, physical rise, upper/lower floor IDs, and destination landing anchors. While the actor is inside the flight, derive vertical root height from normalized progress and blend a stair locomotion pose from actual movement. Trigger streaming only when velocity points through the corresponding end band. Place the actor on a clear destination landing and disarm the portal until the actor exits its trigger, so a held key cannot cascade through several floors. Keep direct floor-selection UI and explicit up/down keys as editor/debug paths, not the primary play interaction.
+
 ## Collision policy
 
 Inventory collision separately from visuals and interactions. Walls, substantial furniture, movable chairs, and standing occupants are usually blocking bodies; stair portals and rugs are usually pass-through triggers. State-linked parts such as open drawers may need a different shape from their closed state. Move saved colliders with their instance transform and resolve diagonal motion with axis sliding so actors do not stick at corners.

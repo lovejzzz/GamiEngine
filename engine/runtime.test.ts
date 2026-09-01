@@ -8,6 +8,8 @@ import {
   pointToDoor,
   pushDoor,
   segmentHitsRect,
+  stairProgress,
+  stairTraversalDirection,
   updateDoor,
   type RuntimeDoor,
 } from './runtime';
@@ -53,6 +55,19 @@ describe('runtime geometry', () => {
     expect(nearestFloorIndex(0, -1, 4)).toBe(0);
     expect(nearestFloorIndex(1, 1, 4)).toBe(2);
     expect(nearestFloorIndex(3, 1, 4)).toBe(3);
+  });
+
+  it('maps stair height and activates portals only at the matching travel edge', () => {
+    const stairs = {
+      id: 'stairs', x: 100, y: 200, width: 100, height: 200,
+      autoTraverse: true, upDirection: 'north' as const, rise: 1.1,
+      toUp: 'f2', toDown: 'b1',
+    };
+    expect(stairProgress({ x: 150, y: 380 }, stairs)).toBeCloseTo(0.1);
+    expect(stairProgress({ x: 150, y: 220 }, stairs)).toBeCloseTo(0.9);
+    expect(stairTraversalDirection({ x: 150, y: 216 }, { x: 0, y: -80 }, stairs)).toBe(1);
+    expect(stairTraversalDirection({ x: 150, y: 384 }, { x: 0, y: 80 }, stairs)).toBe(-1);
+    expect(stairTraversalDirection({ x: 150, y: 300 }, { x: 0, y: -80 }, stairs)).toBeNull();
   });
 
   it('blocks actor circles and slides along a free axis', () => {

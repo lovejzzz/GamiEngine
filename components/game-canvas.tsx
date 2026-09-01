@@ -10,9 +10,10 @@ import {
   circleHitsRect,
   interactionScore,
   moveCircleWithSliding,
-  nearestFloorIndex,
   pointToDoor,
   pushDoor,
+  stairProgress,
+  stairTraversalDirection,
   updateDoor,
   type CircleCollider,
   type RuntimeDoor,
@@ -62,6 +63,7 @@ type FloorMemory = {
 
 const keys = new Set<string>();
 const memories = new Map<string, FloorMemory>();
+let pendingFloorSpawn: { floorId: string; position: Vec2; facing: number } | null = null;
 const ppm = buildingScene.world.pixelsPerMeter;
 const toMeters = (value: number) => value / ppm;
 const toWorld = (point: Vec2) => new THREE.Vector3(
@@ -112,26 +114,30 @@ export function GameCanvas({
     const floor = buildingScene.floors[floorIndex];
     const memory = makeMemory(floor);
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0a100d);
-    scene.fog = new THREE.FogExp2(0x0a100d, 0.027);
+    scene.background = new THREE.Color(0x060b10);
+    scene.fog = new THREE.FogExp2(0x081016, 0.018);
 
-    const camera = new THREE.PerspectiveCamera(43, 1, 0.05, 60);
-    camera.position.set(0, 10.5, 8.2);
+    const camera = new THREE.PerspectiveCamera(39, 1, 0.05, 60);
+    camera.position.set(0.35, 10.1, 7.8);
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.12;
+    renderer.toneMappingExposure = 1.18;
     renderer.domElement.className = 'game-canvas';
     renderer.domElement.tabIndex = 0;
-    renderer.domElement.setAttribute('aria-label', 'Gami Engine 3D 房屋演示。WASD 移动，E 开门，Q 互动，R/F 上下楼。');
+    renderer.domElement.setAttribute('aria-label', 'Gami Engine 3D 房屋演示。WASD 移动，E 开门，Q 互动，沿楼梯行走自动上下楼。');
     mount.appendChild(renderer.domElement);
     const interactionPrompt = document.createElement('div');
     interactionPrompt.className = 'interaction-prompt';
     interactionPrompt.hidden = true;
     mount.appendChild(interactionPrompt);
+    const floorTransition = document.createElement('div');
+    floorTransition.className = 'floor-transition';
+    floorTransition.innerHTML = '<span>STAIR PORTAL</span><b></b>';
+    mount.appendChild(floorTransition);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -165,15 +171,18 @@ export function GameCanvas({
       roughness,
       metalness,
     });
-    const wallMaterial = material(0xd8cdb8, textureSource('material.wallpaper.ivory'), 0.9, 0, 1.5, 1.2);
-    const wallCapMaterial = material(0x8f8b80, undefined, 0.86);
-    const walnutMaterial = material(0xc49a78, textureSource('material.walnut'), 0.7, 0, 1.4, 1.4);
-    const upholsteryMaterial = material(0x5e6840, textureSource('material.upholstery.olive'), 0.97, 0, 1.8, 1.8);
-    const sageMaterial = material(0x788667, textureSource('material.sage-paint'), 0.82, 0, 1.2, 1.2);
+    const wallMaterial = material(0xeee2cc, textureSource('material.wallpaper.ivory'), 0.94, 0, 1.5, 1.2);
+    const wallCapMaterial = material(0x55514a, undefined, 0.88);
+    const wainscotMaterial = material(0x8d6d55, textureSource('material.walnut'), 0.8, 0, 2.1, 1.1);
+    const walnutMaterial = material(0xb28e72, textureSource('material.walnut'), 0.74, 0, 1.4, 1.4);
+    const upholsteryMaterial = material(0x71816d, textureSource('material.upholstery.olive'), 0.98, 0, 1.8, 1.8);
+    const sageMaterial = material(0x8b9b89, textureSource('material.sage-paint'), 0.86, 0, 1.2, 1.2);
     const tacticalMaterial = material(0x1f2924, textureSource('material.tactical-fabric'), 0.95, 0, 2, 2);
-    const brassMaterial = material(0xb08b42, undefined, 0.34, 0.72);
-    const darkMetalMaterial = material(0x222725, undefined, 0.42, 0.72);
-    const fabricMaterial = material(0xa89e8d, undefined, 0.98);
+    const brassMaterial = material(0x9a7138, undefined, 0.38, 0.68);
+    const darkMetalMaterial = material(0x182025, undefined, 0.44, 0.72);
+    const fabricMaterial = material(0x7b7064, undefined, 0.98);
+    const oxbloodMaterial = material(0x542d2f, undefined, 0.94);
+    const porcelainMaterial = material(0xd1cec3, undefined, 0.24);
     const floorSources: Record<string, string | null> = {
       'floor.herringbone': textureSource('floor.herringbone'),
       'floor.checker': textureSource('floor.checker'),
@@ -227,7 +236,7 @@ export function GameCanvas({
 
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(18, 13),
-      new THREE.MeshStandardMaterial({ color: 0x111813, roughness: 1 }),
+      new THREE.MeshStandardMaterial({ color: 0x0a1014, roughness: 1 }),
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.09;
@@ -239,7 +248,7 @@ export function GameCanvas({
       const width = toMeters(room.width);
       const depth = toMeters(room.height);
       const roomMaterial = material(
-        0xffffff,
+        room.floorAsset === 'floor.carpet' ? 0x77716b : room.floorAsset === 'floor.concrete' ? 0x7e8581 : 0xb8aa95,
         floorSources[room.floorAsset],
         room.floorAsset === 'floor.carpet' ? 1 : 0.76,
         0,
@@ -247,6 +256,8 @@ export function GameCanvas({
         Math.max(1, depth / 1.55),
       );
       addBox(worldRoot, [width, 0.08, depth], [center.x, -0.04, center.z], roomMaterial, false);
+      const edgeMaterial = material(room.floorAsset === 'floor.carpet' ? 0x302c2a : 0x443329, undefined, 0.88);
+      addBox(worldRoot, [width, 0.035, 0.045], [center.x, 0.012, center.z - depth / 2 + 0.03], edgeMaterial, false);
     }
 
     for (const wall of floor.walls) {
@@ -264,9 +275,37 @@ export function GameCanvas({
       wallMesh.castShadow = true;
       wallMesh.receiveShadow = true;
       worldRoot.add(wallMesh);
+      if (!isSouthCutaway) {
+        const wainscotHeight = Math.min(0.38, wallHeight * 0.42);
+        addBox(worldRoot, [width + 0.018, wainscotHeight, depth + 0.018], [center.x, wainscotHeight / 2 + 0.01, center.z], wainscotMaterial);
+        addBox(worldRoot, [width + 0.035, 0.055, depth + 0.035], [center.x, wainscotHeight + 0.04, center.z], brassMaterial, false);
+      }
       addColliderOutline(wall, wallHeight + 0.07);
     }
     for (const obstacle of floor.obstacles ?? []) addColliderOutline(obstacle, 0.92, 0xe39a62);
+
+    const coolGlassMaterial = new THREE.MeshStandardMaterial({
+      color: 0x64819a,
+      emissive: 0x244b72,
+      emissiveIntensity: 1.55,
+      roughness: 0.3,
+      metalness: 0.08,
+    });
+    for (const room of floor.rooms.filter((item) => item.y < 80 && item.width > 175 && item.purpose !== 'storage')) {
+      const windowPoint = toWorld({ x: room.x + room.width * 0.52, y: 61 });
+      const window = new THREE.Group();
+      window.position.set(windowPoint.x, 0.91, windowPoint.z + 0.13);
+      const pane = new THREE.Mesh(new THREE.PlaneGeometry(0.92, 0.78), coolGlassMaterial);
+      pane.receiveShadow = true;
+      window.add(pane);
+      addBox(window, [1.03, 0.065, 0.065], [0, 0.42, 0.025], darkMetalMaterial, false);
+      addBox(window, [1.03, 0.065, 0.065], [0, -0.42, 0.025], darkMetalMaterial, false);
+      addBox(window, [0.065, 0.9, 0.065], [-0.5, 0, 0.025], darkMetalMaterial, false);
+      addBox(window, [0.065, 0.9, 0.065], [0.5, 0, 0.025], darkMetalMaterial, false);
+      addBox(window, [0.045, 0.82, 0.05], [0, 0, 0.04], darkMetalMaterial, false);
+      addBox(window, [0.96, 0.045, 0.05], [0, 0, 0.04], darkMetalMaterial, false);
+      worldRoot.add(window);
+    }
 
     const doors: RuntimeDoor[] = floor.doors.map((spec) => ({
       id: spec.id,
@@ -281,14 +320,19 @@ export function GameCanvas({
       motorTarget: null,
     }));
     const doorGroups = new Map<string, THREE.Group>();
+    const doorLeafMaterial = material(0x2d3a33, textureSource('material.sage-paint'), 0.78, 0, 1, 1.4);
     for (const door of doors) {
       const hinge = toWorld(door.hinge);
       const group = new THREE.Group();
       group.position.copy(hinge);
       group.rotation.y = -door.angle;
       const length = toMeters(door.length);
-      addBox(group, [length, 1.58, 0.095], [length / 2, 0.79, 0], material(0xbab3a4, textureSource('material.wallpaper.ivory'), 0.72, 0, 0.8, 1.2));
+      addBox(group, [length, 1.58, 0.105], [length / 2, 0.79, 0], doorLeafMaterial);
+      for (const y of [0.45, 1.11]) {
+        addBox(group, [length * 0.68, 0.42, 0.035], [length * 0.51, y, 0.07], wainscotMaterial, false);
+      }
       addBox(group, [0.045, 0.045, 0.12], [length - 0.13, 0.86, 0], brassMaterial);
+      addBox(group, [0.07, 1.64, 0.13], [0, 0.82, 0], wainscotMaterial);
       worldRoot.add(group);
       doorGroups.set(door.id, group);
     }
@@ -356,12 +400,28 @@ export function GameCanvas({
       const group = new THREE.Group();
       const width = toMeters(prop.size.x);
       const depth = toMeters(prop.size.y);
-      const steps = 10;
+      const steps = 12;
+      const rise = floor.stairs.rise;
       for (let index = 0; index < steps; index += 1) {
         const stepDepth = depth / steps;
-        const height = 0.08 + index * 0.09;
-        addBox(group, [width, height, stepDepth * 0.96], [0, height / 2, -depth / 2 + stepDepth * (index + 0.5)], walnutMaterial);
+        const height = 0.055 + (index + 1) / steps * rise;
+        const z = depth / 2 - stepDepth * (index + 0.5);
+        addBox(group, [width, height, stepDepth * 0.98], [0, height / 2, z], walnutMaterial);
+        addBox(group, [width * 0.48, 0.018, stepDepth * 0.72], [0, height + 0.012, z], oxbloodMaterial, false);
       }
+      const postHeight = 0.54;
+      for (const side of [-1, 1]) {
+        for (const index of [0, 3, 6, 9, 11]) {
+          const stepDepth = depth / steps;
+          const stairHeight = 0.055 + (index + 1) / steps * rise;
+          const z = depth / 2 - stepDepth * (index + 0.5);
+          addBox(group, [0.065, postHeight, 0.065], [side * width * 0.47, stairHeight + postHeight / 2, z], wainscotMaterial);
+        }
+        const railLength = Math.hypot(depth, rise);
+        const rail = addBox(group, [0.075, 0.085, railLength], [side * width * 0.47, rise / 2 + postHeight + 0.05, 0], wainscotMaterial);
+        rail.rotation.x = -Math.atan2(rise, depth);
+      }
+      addBox(group, [width + 0.1, 0.12, 0.12], [0, rise + 0.08, -depth / 2 + 0.04], wainscotMaterial);
       return group;
     };
 
@@ -464,6 +524,30 @@ export function GameCanvas({
     }
 
     const addRoomDetails = () => {
+      const rugMaterial = (color: number) => material(color, textureSource('floor.carpet'), 1, 0, 1.4, 1.4);
+      const addRug = (x: number, z: number, width: number, depth: number, color: number) => {
+        const rug = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), rugMaterial(color));
+        rug.rotation.x = -Math.PI / 2;
+        rug.position.set(x, 0.016, z);
+        rug.receiveShadow = true;
+        worldRoot.add(rug);
+      };
+      const addWallArt = (x: number, z: number, width = 0.6, color = 0x634542) => {
+        addBox(worldRoot, [width + 0.08, 0.58, 0.045], [x, 0.98, z], wainscotMaterial, false);
+        addBox(worldRoot, [width, 0.48, 0.025], [x, 0.98, z + 0.035], material(color, undefined, 0.82), false);
+      };
+      const addTableLamp = (x: number, z: number) => {
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.15, 0.22, 20), brassMaterial);
+        base.position.set(x, 0.18, z);
+        base.castShadow = true;
+        worldRoot.add(base);
+        const shade = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.12, 0.25, 0.32, 20, 1, true),
+          new THREE.MeshStandardMaterial({ color: 0xb79b73, emissive: 0x8a4e20, emissiveIntensity: 0.58, roughness: 0.86, side: THREE.DoubleSide }),
+        );
+        shade.position.set(x, 0.48, z);
+        worldRoot.add(shade);
+      };
       for (const room of floor.rooms) {
         const center = toWorld({ x: room.x + room.width / 2, y: room.y + room.height / 2 });
         const width = toMeters(room.width);
@@ -473,6 +557,7 @@ export function GameCanvas({
           boiler.position.set(center.x - width * 0.25, 0.68, center.z - depth * 0.18);
           boiler.castShadow = true;
           worldRoot.add(boiler);
+          for (const offset of [-0.18, 0.18]) addBox(worldRoot, [0.08, 1.42, 0.08], [center.x + offset, 0.72, center.z - depth * 0.42], darkMetalMaterial);
         }
         if (room.purpose === 'storage') {
           for (let index = -1; index <= 1; index += 1) {
@@ -480,23 +565,43 @@ export function GameCanvas({
           }
         }
         if (room.purpose === 'bathroom') {
-          addBox(worldRoot, [width * 0.62, 0.52, 0.72], [center.x, 0.26, center.z - depth * 0.27], material(0xd8d8cf, undefined, 0.28));
-          const basin = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.2, 0.62, 20), material(0xd8d8cf, undefined, 0.28));
+          addBox(worldRoot, [width * 0.62, 0.52, 0.72], [center.x, 0.26, center.z - depth * 0.27], porcelainMaterial);
+          const basin = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.2, 0.62, 20), porcelainMaterial);
           basin.position.set(center.x + width * 0.26, 0.31, center.z + depth * 0.25);
           worldRoot.add(basin);
+          addBox(worldRoot, [0.7, 0.64, 0.025], [center.x + width * 0.26, 1.02, center.z - depth * 0.5 + 0.16], darkMetalMaterial, false);
         }
         if (room.purpose === 'nursery') {
-          addBox(worldRoot, [1.05, 0.34, 1.45], [center.x - width * 0.28, 0.24, center.z - depth * 0.03], fabricMaterial);
+          const cribX = center.x - width * 0.28;
+          addBox(worldRoot, [1.05, 0.18, 1.45], [cribX, 0.23, center.z - depth * 0.03], fabricMaterial);
+          for (const side of [-1, 1]) for (let index = -3; index <= 3; index += 1) {
+            addBox(worldRoot, [0.045, 0.62, 0.045], [cribX + index * 0.15, 0.53, center.z - depth * 0.03 + side * 0.69], wainscotMaterial);
+          }
           for (let index = 0; index < 5; index += 1) {
             addBox(worldRoot, [0.16, 0.16, 0.16], [center.x + 0.45 + (index % 2) * 0.2, 0.08, center.z + (index - 2) * 0.14], material([0xc16f62, 0x7095a0, 0xd1ab5b][index % 3], undefined, 0.8));
           }
         }
         if (room.purpose === 'entry') {
-          const rug = new THREE.Mesh(new THREE.PlaneGeometry(width * 0.55, depth * 0.35), material(0x604c3d, textureSource('floor.carpet'), 1, 0, 1, 1));
-          rug.rotation.x = -Math.PI / 2;
-          rug.position.set(center.x, 0.012, center.z + depth * 0.18);
-          rug.receiveShadow = true;
-          worldRoot.add(rug);
+          addRug(center.x, center.z + depth * 0.18, width * 0.55, depth * 0.35, 0x4f302f);
+          addWallArt(center.x, center.z - depth / 2 + 0.18, 0.54, 0x4b5b51);
+        }
+        if (room.purpose === 'living') {
+          addRug(center.x + width * 0.05, center.z + depth * 0.18, width * 0.64, depth * 0.42, 0x4b302f);
+          addWallArt(center.x + width * 0.22, center.z - depth / 2 + 0.18, 0.74, 0x6c5140);
+          addTableLamp(center.x + width * 0.38, center.z - depth * 0.22);
+        }
+        if (room.purpose === 'bedroom') {
+          addRug(center.x, center.z + depth * 0.22, width * 0.58, depth * 0.32, 0x4b3437);
+          addWallArt(center.x + width * 0.28, center.z - depth / 2 + 0.18, 0.5, 0x475764);
+          addTableLamp(center.x + width * 0.34, center.z - depth * 0.16);
+        }
+        if (room.purpose === 'dining') {
+          addRug(center.x + width * 0.08, center.z, width * 0.62, depth * 0.62, 0x403331);
+          addWallArt(center.x + width * 0.28, center.z - depth / 2 + 0.18, 0.68, 0x66533f);
+        }
+        if (room.purpose === 'studio') {
+          addRug(center.x - width * 0.12, center.z, width * 0.48, depth * 0.38, 0x35424a);
+          addWallArt(center.x + width * 0.25, center.z - depth / 2 + 0.18, 0.82, 0x5b493b);
         }
       }
     };
@@ -572,7 +677,14 @@ export function GameCanvas({
     };
 
     const playerRig = makeRig('operator');
-    const player = { ...floor.spawn, radius: 15, moving: false, facing: Math.PI };
+    const arrival = pendingFloorSpawn?.floorId === floor.id ? pendingFloorSpawn : null;
+    const player = {
+      ...(arrival?.position ?? floor.spawn),
+      radius: 15,
+      moving: false,
+      facing: arrival?.facing ?? Math.PI,
+    };
+    if (arrival) pendingFloorSpawn = null;
     playerRig.root.position.copy(toWorld(player));
     worldRoot.add(playerRig.root);
     type ResidentRuntime = {
@@ -622,10 +734,12 @@ export function GameCanvas({
       residentRigs.push({ rig, spec: occupant, state: actorState, phase: index * 1.7, moving: false, colliderOutline });
     });
 
-    const hemi = new THREE.HemisphereLight(0xbdd2c8, 0x251c16, 1.22);
+    const ambient = new THREE.AmbientLight(0x71808a, 0.92);
+    scene.add(ambient);
+    const hemi = new THREE.HemisphereLight(0x8fa5b7, 0x2b1c15, 1.08);
     scene.add(hemi);
-    const moon = new THREE.DirectionalLight(0xc9ddd7, 2.15);
-    moon.position.set(-4, 9, 5);
+    const moon = new THREE.DirectionalLight(0xa7c2df, 2.25);
+    moon.position.set(-5, 9, 4);
     moon.castShadow = true;
     moon.shadow.mapSize.set(2048, 2048);
     moon.shadow.camera.left = -8;
@@ -634,7 +748,7 @@ export function GameCanvas({
     moon.shadow.camera.bottom = -7;
     scene.add(moon);
     const flashlightTarget = new THREE.Object3D();
-    const flashlight = new THREE.SpotLight(0xdceae3, 16, 8.5, 0.36, 0.92, 1.8);
+    const flashlight = new THREE.SpotLight(0xe5e1d3, 10.5, 9.2, 0.42, 0.98, 1.9);
     flashlight.castShadow = true;
     flashlight.shadow.mapSize.set(1024, 1024);
     flashlight.shadow.camera.near = 0.2;
@@ -645,27 +759,52 @@ export function GameCanvas({
     for (const light of floor.lights) {
       if (!light.enabled) continue;
       const position = toWorld(light.position);
-      const point = new THREE.PointLight(0xffc680, light.intensity * 8, toMeters(light.radius) * 2.6, 1.7);
-      point.position.set(position.x, 2.25, position.z);
+      const point = new THREE.PointLight(0xffad68, light.intensity * 12, toMeters(light.radius) * 2.7, 1.8);
+      point.position.set(position.x, 1.92, position.z);
       // Point-light shadows render six shadow views each. The directional moon
       // and player spotlight own dynamic shadows; room bulbs provide fill only.
       point.castShadow = false;
       scene.add(point);
+      const bulb = new THREE.Mesh(
+        new THREE.SphereGeometry(0.075, 16, 12),
+        new THREE.MeshStandardMaterial({ color: 0xffd8a7, emissive: 0xff8a3d, emissiveIntensity: 3.2, roughness: 0.4 }),
+      );
+      bulb.position.copy(point.position);
+      scene.add(bulb);
+      addBox(worldRoot, [0.035, 0.38, 0.035], [position.x, 2.16, position.z], darkMetalMaterial, false);
     }
 
+    let transitioningFloor = false;
+    let transitionTimer: ReturnType<typeof setTimeout> | undefined;
     const traverseStairs = (direction: 1 | -1) => {
+      if (transitioningFloor) return;
       const targetId = direction === 1 ? floor.stairs.toUp : floor.stairs.toDown;
       if (!circleHitsRect(player, 40, floor.stairs)) {
-        stateRef.current.onStatus('先走到楼梯，再按 R/F 换层');
+        stateRef.current.onStatus('走进楼梯并沿踏步方向移动；R/F 也可作为辅助键');
         return;
       }
       if (!targetId) {
         stateRef.current.onStatus(direction === 1 ? '上方没有楼层' : '下方没有楼层');
         return;
       }
-      const target = nearestFloorIndex(floorIndex, direction, buildingScene.floors.length);
-      stateRef.current.onStatus(`楼层流送：${floor.name} → ${buildingScene.floors[target].name}`);
-      stateRef.current.onFloorChange(target);
+      const target = buildingScene.floors.find((candidate) => candidate.id === targetId);
+      if (!target) return;
+      transitioningFloor = true;
+      const label = floorTransition.querySelector('b');
+      if (label) label.textContent = `${floor.name}  →  ${target.name}`;
+      floorTransition.classList.add('active');
+      stateRef.current.onStatus(`楼梯通行：${floor.name} → ${target.name} · 保存本层状态`);
+      transitionTimer = setTimeout(() => {
+        pendingFloorSpawn = {
+          floorId: target.id,
+          position: {
+            x: target.stairs.x + target.stairs.width + 38,
+            y: target.stairs.y + target.stairs.height * 0.56,
+          },
+          facing: Math.PI / 2,
+        };
+        stateRef.current.onFloorChange(target.index);
+      }, 320);
     };
 
     const toggleProfile = (
@@ -946,14 +1085,14 @@ export function GameCanvas({
       renderer.domElement.style.filter = state.nightVision
         ? 'sepia(.7) hue-rotate(72deg) saturate(1.45) brightness(1.18)'
         : 'none';
-      scene.background = new THREE.Color(state.nightVision ? 0x06140b : 0x0a100d);
-      scene.fog = new THREE.FogExp2(state.nightVision ? 0x06140b : 0x0a100d, state.nightVision ? 0.021 : 0.027);
-      hemi.color.setHex(state.nightVision ? 0x83d59a : 0xbdd2c8);
-      moon.color.setHex(state.nightVision ? 0x6bdc88 : 0xc9ddd7);
+      scene.background = new THREE.Color(state.nightVision ? 0x041109 : 0x060b10);
+      scene.fog = new THREE.FogExp2(state.nightVision ? 0x06140b : 0x081016, state.nightVision ? 0.021 : 0.018);
+      hemi.color.setHex(state.nightVision ? 0x83d59a : 0x718aa1);
+      moon.color.setHex(state.nightVision ? 0x6bdc88 : 0x9cb8d4);
       updateResidents(dt, elapsed, state.paused);
       updateInteractiveParts(dt);
 
-      if (!state.paused) {
+      if (!state.paused && !transitioningFloor) {
         let x = 0;
         let y = 0;
         if (keys.has('w') || keys.has('arrowup')) y -= 1;
@@ -986,6 +1125,8 @@ export function GameCanvas({
           player.y = proposed.y;
         }
         player.moving = moved && (!blockedDoor || pushed);
+        const stairDirection = stairTraversalDirection(player, velocity, floor.stairs);
+        if (stairDirection) traverseStairs(stairDirection);
       } else {
         player.moving = false;
         for (const door of doors) {
@@ -997,17 +1138,24 @@ export function GameCanvas({
       }
 
       const playerWorld = toWorld(player);
-      playerRig.root.position.set(playerWorld.x, 0, playerWorld.z);
+      const playerOnStairs = circleHitsRect(player, 0.01, floor.stairs);
+      const stairLift = playerOnStairs ? stairProgress(player, floor.stairs) * floor.stairs.rise : 0;
+      playerRig.root.position.set(playerWorld.x, stairLift, playerWorld.z);
       playerRig.root.rotation.y = player.facing;
       animateRig(playerRig, elapsed * 8, player.moving, dt);
+      if (playerOnStairs) {
+        playerRig.torso.rotation.x -= 0.1;
+        playerRig.leftShin.rotation.x += 0.16;
+        playerRig.rightShin.rotation.x += 0.16;
+      }
       const forward = new THREE.Vector3(Math.sin(player.facing), 0, Math.cos(player.facing));
       flashlight.position.copy(playerRig.root.position).add(new THREE.Vector3(0, 1.42, 0));
       flashlightTarget.position.copy(playerRig.root.position).addScaledVector(forward, 4.6).add(new THREE.Vector3(0, 0.52, 0));
-      flashlight.intensity = state.nightVision ? 3.5 : 16;
+      flashlight.intensity = state.nightVision ? 3.5 : 10.5;
 
       const focusedInteraction = getInteractionCandidate();
       interactionMarker.visible = Boolean(focusedInteraction);
-      interactionPrompt.hidden = !focusedInteraction;
+      interactionPrompt.hidden = !focusedInteraction && !playerOnStairs;
       if (focusedInteraction) {
         const markerPosition = toWorld(focusedInteraction.position);
         interactionMarker.position.set(markerPosition.x, 0.035, markerPosition.z);
@@ -1016,6 +1164,9 @@ export function GameCanvas({
         interactionPrompt.textContent = busy
           ? `${activeInteractionName} · 动作中`
           : `Q · ${focusedInteraction.name}`;
+      } else if (playerOnStairs) {
+        const options = [floor.stairs.toUp ? 'W 向上通行' : '', floor.stairs.toDown ? 'S 向下通行' : ''].filter(Boolean);
+        interactionPrompt.textContent = options.join('  ·  ');
       }
 
       if (state.cameraMode === 'follow') {
@@ -1036,6 +1187,8 @@ export function GameCanvas({
       renderer.domElement.dataset.interactions = JSON.stringify({ ...memory.props, ...memory.parts });
       renderer.domElement.dataset.focusedInteraction = focusedInteraction?.id ?? '';
       renderer.domElement.dataset.interactionBusy = String(now < interactionBusyUntil);
+      renderer.domElement.dataset.stairProgress = playerOnStairs ? stairProgress(player, floor.stairs).toFixed(3) : '';
+      renderer.domElement.dataset.stairTransition = String(transitioningFloor);
       renderer.domElement.dataset.occupants = JSON.stringify(Object.fromEntries(
         residentRigs.map((resident) => [resident.spec.id, {
           x: Number(resident.state.position.x.toFixed(1)),
@@ -1050,6 +1203,7 @@ export function GameCanvas({
 
     return () => {
       cancelAnimationFrame(frameRequest);
+      if (transitionTimer) clearTimeout(transitionTimer);
       observer.disconnect();
       controls.dispose();
       window.removeEventListener('keydown', keyDown);
@@ -1069,6 +1223,7 @@ export function GameCanvas({
       renderer.dispose();
       renderer.domElement.remove();
       interactionPrompt.remove();
+      floorTransition.remove();
     };
   }, [floorIndex]);
 

@@ -24,11 +24,11 @@ Version 2 declares the renderer and the role of each generated image:
 
 Compound interactions are addressed by `parentId:partId`. The input system scores one target by distance and facing, rejects targets occluded by walls or fixtures, displays the selected target, and serializes operations through an actor-level busy interval. Streaming a floor back in rebuilds geometry and then reapplies saved transforms and visibility.
 
-Collision is declared independently from appearance. Walls and fixed room details use rectangles; movable props carry their collider with their saved offset; standing occupants use persistent circles; stairs remain explicit pass-through portal zones.
+Collision is declared independently from appearance. Walls and fixed room details use rectangles; movable props carry their collider with their saved offset; standing occupants use persistent circles; stairs remain explicit pass-through portal zones. A stair stores uphill direction and rise. Runtime maps actor root height to normalized progress, activates upper/lower portals only at the matching end while moving along the stair axis, and places the actor on a clear destination landing so held input cannot cascade across floors.
 
 ### Rendering
 
-The demo uses Three.js WebGL with sRGB output and ACES tone mapping. Generated base-color maps are declared sRGB; a later roughness/normal/metalness pipeline should load those data maps as linear. One directional light and one player spotlight own dynamic shadows. Room point lights are fill-only because a shadowed point light renders six shadow views.
+The demo uses Three.js WebGL with sRGB output and ACES tone mapping. Generated base-color maps are declared sRGB; a later roughness/normal/metalness pipeline should load those data maps as linear. One directional light and one player spotlight own dynamic shadows. Room point lights are fill-only because a shadowed point light renders six shadow views. The environment reference study is stored as modeling input only; its cool window light, warm practical hierarchy, aged ivory, dark walnut, muted green, oxblood accents, trim language, and localized wear are rebuilt through engine materials, geometry, and lights.
 
 The cutaway keeps the south wall low, side walls medium, and internal walls readable. The editor camera supports inspection; follow mode evaluates the actual play experience. Fog and night vision are runtime effects rather than baked into generated textures.
 

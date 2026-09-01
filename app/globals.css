@@ -1,26 +1,26 @@
 @import 'tailwindcss';
 
 :root {
-  --ink: #d8ded7;
-  --muted: #7e8b82;
-  --line: #28332d;
-  --panel: #101713;
-  --panel-2: #151d18;
-  --green: #67efaa;
-  --amber: #dfb66b;
+  --ink: #dde2df;
+  --muted: #82908d;
+  --line: #28343a;
+  --panel: #0d1418;
+  --panel-2: #131c20;
+  --green: #79d7b0;
+  --amber: #c99b61;
   --red: #f07870;
   --font-ui: var(--font-geist-sans), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; min-height: 100%; background: #090d0b; color: var(--ink); }
+html, body { margin: 0; min-height: 100%; background: #070b0e; color: var(--ink); }
 body { font-family: var(--font-ui); overflow: hidden; }
 button { color: inherit; font: inherit; }
 button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 
-.studio-shell { min-height: 100vh; background: radial-gradient(circle at 55% 35%, #172019 0, #090d0b 60%); }
-.topbar { height: 64px; border-bottom: 1px solid var(--line); background: rgba(10, 15, 12, .96); display: grid; grid-template-columns: 280px 1fr 280px; align-items: center; padding: 0 18px; }
+.studio-shell { min-height: 100vh; background: radial-gradient(circle at 54% 30%, #18242a 0, #070b0e 64%); }
+.topbar { height: 64px; border-bottom: 1px solid var(--line); background: rgba(7, 12, 15, .96); display: grid; grid-template-columns: 280px 1fr 280px; align-items: center; padding: 0 18px; box-shadow: 0 12px 30px rgba(0,0,0,.18); }
 .brand-lockup { display: flex; align-items: center; gap: 11px; }
 .brand-mark { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid #415147; background: #17221c; color: var(--green); }
 .brand-lockup div { display: flex; flex-direction: column; line-height: 1; gap: 5px; }
@@ -77,17 +77,22 @@ button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 .viewport-toolbar > div { display: flex; align-items: center; gap: 7px; }
 .viewport-toolbar b { color: #56645b; font-weight: 500; margin-left: 5px; }
 .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 9px var(--green); }
-.canvas-wrap { position: relative; min-height: 0; overflow: hidden; background: #080c0a; }
+.canvas-wrap { position: relative; min-height: 0; overflow: hidden; background: #05090d; }
+.canvas-wrap::after { content: ''; position: absolute; inset: 0; z-index: 2; pointer-events: none; background: radial-gradient(ellipse at 50% 44%, transparent 46%, rgba(2,5,8,.22) 76%, rgba(2,4,7,.62) 100%); mix-blend-mode: multiply; }
 .game-viewport, .game-canvas { width: 100%; height: 100%; display: block; }
 .game-viewport { position: absolute; inset: 0; }
-.interaction-prompt { position: absolute; left: 50%; top: 72px; translate: -50% 0; z-index: 4; padding: 7px 10px; border: 1px solid rgba(93,243,165,.58); background: rgba(7,14,10,.88); color: #9ff7c4; font: 600 10px/1.2 var(--font-mono, monospace); letter-spacing: .06em; pointer-events: none; box-shadow: 0 0 18px rgba(93,243,165,.09); }
-.floor-badge { position: absolute; top: 14px; left: 14px; display: flex; align-items: center; gap: 9px; border: 1px solid rgba(92,116,101,.65); background: rgba(7,12,9,.78); padding: 7px 10px; backdrop-filter: blur(10px); }
+.interaction-prompt { position: absolute; left: 50%; top: 72px; translate: -50% 0; z-index: 5; padding: 8px 12px; border: 1px solid rgba(121,215,176,.48); background: rgba(6,12,15,.88); color: #afe6cf; font: 600 10px/1.2 var(--font-mono, monospace); letter-spacing: .06em; pointer-events: none; box-shadow: 0 10px 26px rgba(0,0,0,.26); backdrop-filter: blur(10px); }
+.floor-transition { position: absolute; inset: 0; z-index: 12; display: grid; place-content: center; gap: 7px; text-align: center; pointer-events: none; opacity: 0; background: #05090d; transition: opacity .3s ease; }
+.floor-transition.active { opacity: 1; }
+.floor-transition span { color: #6f7d80; font: 8px var(--font-mono); letter-spacing: .28em; }
+.floor-transition b { color: #d7dfdc; font: 500 16px var(--font-mono); letter-spacing: .12em; }
+.floor-badge { position: absolute; z-index: 4; top: 14px; left: 14px; display: flex; align-items: center; gap: 9px; border: 1px solid rgba(92,116,125,.52); background: rgba(5,10,13,.76); padding: 7px 10px; backdrop-filter: blur(12px); }
 .floor-badge span { font: 700 12px var(--font-mono); color: var(--green); }
 .floor-badge p { margin: 0; font-size: 9px; color: #9aa69e; }
-.play-hint { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 7px; background: rgba(7,12,9,.82); border: 1px solid rgba(74,96,83,.64); padding: 7px 10px; backdrop-filter: blur(10px); white-space: nowrap; }
+.play-hint { position: absolute; z-index: 4; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 7px; background: rgba(5,10,13,.82); border: 1px solid rgba(77,101,109,.58); padding: 7px 10px; backdrop-filter: blur(12px); white-space: nowrap; }
 .play-hint kbd { min-width: 27px; height: 23px; display: grid; place-items: center; border: 1px solid #526158; border-bottom-color: #2d3932; background: #1b241f; color: #dce5df; font: 8px var(--font-mono); padding: 0 5px; }
 .play-hint span { color: #8b978f; font-size: 8px; }
-.physics-status { position: absolute; right: 14px; bottom: 16px; display: flex; align-items: center; gap: 8px; max-width: 300px; background: rgba(10,17,13,.8); border: 1px solid rgba(66,86,74,.6); padding: 8px 10px; color: var(--green); }
+.physics-status { position: absolute; z-index: 4; right: 14px; bottom: 16px; display: flex; align-items: center; gap: 8px; max-width: 300px; background: rgba(6,12,15,.82); border: 1px solid rgba(68,91,98,.58); padding: 8px 10px; color: var(--green); backdrop-filter: blur(12px); }
 .physics-status p { margin: 0; color: #a4b0a8; font-size: 8px; line-height: 1.35; }
 .viewport-footer { border-top: 1px solid var(--line); display: flex; align-items: center; gap: 24px; padding: 0 12px; color: #59665e; font: 8px var(--font-mono); }
 .viewport-footer b { color: #849088; margin-left: 5px; font-weight: 500; }

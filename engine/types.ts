@@ -172,7 +172,13 @@ export type FloorSpec = {
   occupants: OccupantSpec[];
   props: PropSpec[];
   lights: LightSpec[];
-  stairs: RectSpec & { toUp?: string; toDown?: string };
+  stairs: RectSpec & {
+    toUp?: string;
+    toDown?: string;
+    autoTraverse: boolean;
+    upDirection: 'north' | 'south' | 'east' | 'west';
+    rise: number;
+  };
   spawn: Vec2;
 };
 

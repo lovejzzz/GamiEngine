@@ -21,12 +21,12 @@ const kindIcon = {
 
 export function GameEngineStudio() {
   const [floorIndex, setFloorIndex] = useState(1);
-  const [selectedId, setSelectedId] = useState('character.operator');
+  const [selectedId, setSelectedId] = useState('reference.townhouse-art-direction-v1');
   const [paused, setPaused] = useState(false);
   const [showPhysics, setShowPhysics] = useState(false);
   const [nightVision, setNightVision] = useState(false);
   const [cameraMode, setCameraMode] = useState<CameraMode>('editor');
-  const [status, setStatus] = useState('WASD 移动 · E 开门 · Q 互动 · 在楼梯按 R/F 上下楼');
+  const [status, setStatus] = useState('WASD 移动 · E 开门 · Q 互动 · 走入楼梯并沿踏步上下楼');
   const [generating, setGenerating] = useState(false);
   const [notice, setNotice] = useState('');
   const floor = buildingScene.floors[floorIndex];
@@ -143,7 +143,7 @@ export function GameEngineStudio() {
           <div className="canvas-wrap">
             <GameCanvas floorIndex={floorIndex} paused={paused} showPhysics={showPhysics} nightVision={nightVision} cameraMode={cameraMode} onFloorChange={changeFloor} onStatus={changeStatus} />
             <div className="floor-badge"><span>{floor.name}</span><p>{floor.subtitle}</p></div>
-            <div className="play-hint"><kbd>WASD</kbd><span>移动</span><kbd>E</kbd><span>门</span><kbd>Q</kbd><span>物品</span><kbd>R/F</kbd><span>楼层</span></div>
+            <div className="play-hint"><kbd>WASD</kbd><span>移动 / 楼梯</span><kbd>E</kbd><span>门</span><kbd>Q</kbd><span>物品</span></div>
             <div className="physics-status"><Footprints size={14} /><p>{status}</p></div>
           </div>
           <div className="viewport-footer">
