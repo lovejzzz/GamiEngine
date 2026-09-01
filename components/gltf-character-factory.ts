@@ -178,7 +178,9 @@ function addClothing(model: THREE.Group, kind: CharacterKind, tint: number, styl
   const leather = new THREE.MeshStandardMaterial({ color: 0x211c19, roughness: .66, metalness: .04 });
 
   const jacket = new THREE.Mesh(createHumanTorsoGeometry(kind), outer);
-  jacket.scale.set(kind === 'operator' ? 1.3 : 1.24, kind === 'operator' ? 1.12 : 1.08, kind === 'operator' ? 1.55 : 1.42);
+  // The underlying body already supplies anatomical volume. This shell is only
+  // cloth clearance; oversized depth/width reads as a toy torso in the follow camera.
+  jacket.scale.set(kind === 'operator' ? 1.1 : 1.07, kind === 'operator' ? 1.08 : 1.05, kind === 'operator' ? 1.16 : 1.12);
   jacket.name = kind === 'operator' ? 'operator-combat-shirt' : 'resident-jacket';
   jacket.castShadow = true;
   attachGarmentAtModelPosition(model, 'spine_02', jacket, new THREE.Vector3(0, 1.31, .005));
@@ -205,17 +207,17 @@ function addClothing(model: THREE.Group, kind: CharacterKind, tint: number, styl
   }
 
   const hipShell = new THREE.Mesh(createHumanPelvisGeometry(kind), trousers);
-  hipShell.scale.set(1.2, 1.22, 1.36);
+  hipShell.scale.set(1.06, 1.1, 1.12);
   hipShell.castShadow = true;
   hipShell.receiveShadow = true;
   attachGarmentAtModelPosition(model, 'pelvis', hipShell, new THREE.Vector3(0, .9, 0));
 
   for (const side of ['l', 'r']) {
-    addBoneCover(model, `upperarm_${side}`, `lowerarm_${side}`, kind === 'operator' ? .101 : .093, outer);
-    addBoneCover(model, `lowerarm_${side}`, `hand_${side}`, kind === 'operator' ? .086 : .079, outer);
-    addBoneCover(model, `thigh_${side}`, `calf_${side}`, kind === 'operator' ? .139 : .128, trousers);
-    addBoneCover(model, `calf_${side}`, `foot_${side}`, kind === 'operator' ? .102 : .094, trousers);
-    addBoneCover(model, `foot_${side}`, `ball_${side}`, kind === 'operator' ? .088 : .082, leather);
+    addBoneCover(model, `upperarm_${side}`, `lowerarm_${side}`, kind === 'operator' ? .084 : .078, outer);
+    addBoneCover(model, `lowerarm_${side}`, `hand_${side}`, kind === 'operator' ? .071 : .066, outer);
+    addBoneCover(model, `thigh_${side}`, `calf_${side}`, kind === 'operator' ? .116 : .108, trousers);
+    addBoneCover(model, `calf_${side}`, `foot_${side}`, kind === 'operator' ? .086 : .08, trousers);
+    addBoneCover(model, `foot_${side}`, `ball_${side}`, kind === 'operator' ? .076 : .071, leather);
     const foot = model.getObjectByName(`foot_${side}`);
     const ball = model.getObjectByName(`ball_${side}`);
     if (foot && ball?.parent === foot) {
@@ -229,7 +231,7 @@ function addClothing(model: THREE.Group, kind: CharacterKind, tint: number, styl
     }
     const knee = model.getObjectByName(`calf_${side}`);
     if (knee) {
-      const kneeCover = new THREE.Mesh(new THREE.SphereGeometry(kind === 'operator' ? .112 : .102, 18, 12), trousers);
+      const kneeCover = new THREE.Mesh(new THREE.SphereGeometry(kind === 'operator' ? .094 : .086, 18, 12), trousers);
       kneeCover.scale.set(.86, .78, .92);
       kneeCover.castShadow = true;
       knee.add(kneeCover);

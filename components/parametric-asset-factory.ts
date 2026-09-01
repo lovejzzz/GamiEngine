@@ -33,6 +33,29 @@ const addPiping = (cushion: THREE.Mesh, material: THREE.Material) => {
   cushion.add(piping);
 };
 
+const softenCushion = (
+  cushion: THREE.Mesh,
+  size: [number, number, number],
+  sag: number,
+) => {
+  const positions = cushion.geometry.getAttribute('position');
+  const [width, height, depth] = size;
+  for (let index = 0; index < positions.count; index += 1) {
+    const x = positions.getX(index);
+    const y = positions.getY(index);
+    const z = positions.getZ(index);
+    const centerX = Math.max(0, 1 - Math.pow(x / (width * .5), 2));
+    const centerZ = Math.max(0, 1 - Math.pow(z / (depth * .5), 2));
+    const topWeight = THREE.MathUtils.smoothstep(y, 0, height * .5);
+    positions.setY(index, y - sag * centerX * centerZ * topWeight);
+    // Tiny edge compression breaks the mathematically perfect inflated-box silhouette.
+    positions.setX(index, x * (1 - .018 * centerZ * topWeight));
+  }
+  positions.needsUpdate = true;
+  cushion.geometry.computeVertexNormals();
+  return cushion;
+};
+
 const turnedLeg = (height: number, material: THREE.Material) => {
   const profile = [
     [0, 0.072], [0.04, 0.069], [0.08, 0.058], [0.16, 0.052],
@@ -118,26 +141,28 @@ export function createParametricSofa(width: number, depth: number, materials: So
 
   for (let index = -1; index <= 1; index += 1) {
     const x = index * (cushionWidth + gap);
-    const seat = roundedPart(
-      [cushionWidth, 0.17, depth * 0.61],
+    const seatSize: [number, number, number] = [cushionWidth, 0.17, depth * 0.61];
+    const seat = softenCushion(roundedPart(
+      seatSize,
       0.032,
       materials.leather,
       [x, p.seatHeight, depth * 0.045],
       5,
-    );
+    ), seatSize, index === 0 ? .026 : .018);
     seat.name = `seat-cushion-${index + 2}`;
     seat.rotation.y = index * 0.008;
     seat.scale.y = index === 0 ? 0.92 : 1;
     addPiping(seat, materials.piping);
     group.add(seat);
 
-    const back = roundedPart(
-      [cushionWidth * 0.98, 0.5, depth * 0.2],
+    const backSize: [number, number, number] = [cushionWidth * 0.98, 0.5, depth * 0.2];
+    const back = softenCushion(roundedPart(
+      backSize,
       0.032,
       materials.leather,
       [x, p.backHeight - 0.08, -depth * 0.29],
       5,
-    );
+    ), backSize, .012);
     back.name = `back-cushion-${index + 2}`;
     back.rotation.x = -0.13;
     back.rotation.z = index * -0.012;

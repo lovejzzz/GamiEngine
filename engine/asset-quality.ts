@@ -76,9 +76,10 @@ export function auditAssetQuality(asset: AssetRecipe, assets: AssetRecipe[]): As
     check('runtime', (asset.quality?.triangleBudget ?? 0) > 0, '未声明三角面预算');
     check('runtime', (asset.quality?.maxDrawCalls ?? 0) > 0, '未声明 Draw Call 预算');
     check('runtime', (asset.quality?.lods ?? 0) >= 1, 'Hero 资产至少需要一个运行时 LOD');
-    check('runtime', asset.quality?.status === 'production', '资产仍处于 fallback 状态');
+    check('runtime', asset.quality?.status === 'production', '资产尚未晋级 production');
     check('runtime', craft?.review.status === 'passed', '缺少独立的运行时近景审查');
-    check('runtime', (craft?.review.evidence.length ?? 0) >= 2, '运行时审查证据不足');
+    check('runtime', Boolean(craft?.review.evidence.some((entry) => entry.startsWith(`browser:${asset.id}:`))), '缺少当前资产专属浏览器证据');
+    check('runtime', Boolean(craft?.review.evidence.some((entry) => entry.startsWith(`revision:${asset.id}:`))), '缺少当前资产专属版本证据');
     check('runtime', Boolean(craft && Object.values(craft.review.checks).every(Boolean)), '轮廓、构造、材质、交互或碰撞仍有未通过项');
   }
 

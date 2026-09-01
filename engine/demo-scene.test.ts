@@ -75,7 +75,7 @@ describe('Gami Engine demo manifest', () => {
     }
   });
 
-  it('bridges hero furniture studies into construction-specific production assets', () => {
+  it('bridges hero furniture studies into construction-specific candidate assets', () => {
     for (const id of ['reference.dining-furniture-multiview-v1', 'reference.casework-multiview-v1']) {
       const study = assets.get(id);
       expect(study?.referenceStudy?.runtimeRule).toBe('never-render-directly');
@@ -89,7 +89,8 @@ describe('Gami Engine demo manifest', () => {
       expect(asset.geometry?.blueprintId).toBeTruthy();
       expect(asset.geometry?.independentlyModeledParts?.length).toBeGreaterThanOrEqual(5);
       expect(asset.quality?.minBevelRadiusM).toBeLessThanOrEqual(.004);
-      expect(auditAssetQuality(asset, buildingScene.assets)).toMatchObject({ ready: true, score: 100 });
+      expect(asset.quality?.status).toBe('candidate');
+      expect(auditAssetQuality(asset, buildingScene.assets)).toMatchObject({ ready: false, score: 76 });
     }
   });
 

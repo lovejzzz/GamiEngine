@@ -31,6 +31,12 @@ import {
   type CharacterMotion,
   type GltfCharacterRuntime,
 } from './gltf-character-factory';
+import {
+  applyMetricBoxUvs,
+  createCalibratedBaseColorMaterial,
+  createCalibratedPbrMaterial,
+  getMaterialMetersPerTile,
+} from './pbr-material-factory';
 import { buildingScene } from '@/engine/demo-scene';
 import { resolveRuntimeSource } from '@/engine/asset-registry';
 import type { FloorSpec, InteractionProfile, OccupantSpec, PropSpec, RectSpec, Vec2 } from '@/engine/types';
@@ -130,8 +136,8 @@ const GAMI_MOOD_GRADE = {
       color = (color - 0.5) * 1.025 + 0.5;
       vec2 centered = (vUv - 0.5) * vec2(1.08, 1.0);
       float vignette = 1.0 - smoothstep(0.19, 0.63, dot(centered, centered));
-      color *= mix(0.91, 1.0, vignette);
-      color += (hash(gl_FragCoord.xy) - 0.5) * 0.007;
+      color *= mix(0.965, 1.0, vignette);
+      color += (hash(gl_FragCoord.xy) - 0.5) * 0.004;
       gl_FragColor = vec4(color, source.a);
     }
   `,
@@ -181,17 +187,17 @@ export function GameCanvas({
     const memory = makeMemory(floor);
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x060b10);
-    scene.fog = new THREE.FogExp2(0x081016, 0.018);
+    scene.fog = new THREE.FogExp2(0x081016, 0.011);
 
-    const camera = new THREE.PerspectiveCamera(cinematic ? 31 : 38, 1, 0.05, 60);
-    camera.position.set(cinematic ? -7.35 : 0.35, cinematic ? 6.65 : 10.1, cinematic ? 9.15 : 7.8);
+    const camera = new THREE.PerspectiveCamera(cinematic ? 34 : 38, 1, 0.05, 60);
+    camera.position.set(cinematic ? -6.45 : 0.35, cinematic ? 5.75 : 10.1, cinematic ? 8.2 : 7.8);
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = cinematic ? 1.08 : 1.02;
+    renderer.toneMappingExposure = cinematic ? 1.07 : 1.04;
     renderer.domElement.className = 'game-canvas';
     renderer.domElement.tabIndex = 0;
     renderer.domElement.setAttribute('aria-label', 'Gami Engine 3D 房屋演示。WASD 移动，E 开门，Q 互动，沿楼梯行走自动上下楼。');
@@ -202,11 +208,11 @@ export function GameCanvas({
       composer.addPass(new RenderPass(scene, camera));
       const gtaoPass = new GTAOPass(scene, camera, 640, 360);
       gtaoPass.updateGtaoMaterial({
-        radius: 0.3,
+        radius: 0.22,
         distanceExponent: 1.6,
-        thickness: 0.8,
+        thickness: 0.62,
         distanceFallOff: 0.7,
-        scale: 0.9,
+        scale: 0.68,
         samples: 16,
       });
       gtaoPass.updatePdMaterial({
@@ -227,7 +233,7 @@ export function GameCanvas({
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     const environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
     scene.environment = environment;
-    scene.environmentIntensity = buildingScene.styleLock.contract?.environmentIntensity ?? 0.22;
+    scene.environmentIntensity = Math.max(buildingScene.styleLock.contract?.environmentIntensity ?? 0.22, 0.27);
     const interactionPrompt = document.createElement('div');
     interactionPrompt.className = 'interaction-prompt';
     interactionPrompt.hidden = true;
@@ -243,7 +249,7 @@ export function GameCanvas({
     controls.minDistance = 5;
     controls.maxDistance = 18;
     controls.maxPolarAngle = Math.PI * 0.47;
-    controls.target.set(cinematic ? -0.32 : 0, cinematic ? 0.62 : 0.4, cinematic ? -0.16 : 0);
+    controls.target.set(cinematic ? -0.2 : 0, cinematic ? 0.62 : 0.4, cinematic ? -0.08 : 0);
 
     const textureLoader = new THREE.TextureLoader();
     const textureSource = (id: string) => resolveRuntimeSource(buildingScene.assets, id, 'runtime-texture');
@@ -274,66 +280,40 @@ export function GameCanvas({
       roughness,
       metalness,
     });
-    const wallMaterial = new THREE.MeshPhysicalMaterial({
-      color: 0x88847c,
-      map: makeTexture(textureSource('material.plaster.greige.base')!, 2.25, 1.65),
-      normalMap: makeTexture(textureSource('material.plaster.greige.normal')!, 2.25, 1.65, 'linear'),
-      normalScale: new THREE.Vector2(0.12, 0.12),
-      roughnessMap: makeTexture(textureSource('material.plaster.greige.roughness')!, 2.25, 1.65, 'linear'),
-      roughness: 0.92,
-      clearcoat: 0.015,
-      clearcoatRoughness: 0.9,
-    });
-    const brickMaterial = new THREE.MeshStandardMaterial({
-      color: 0x756258,
-      map: makeTexture(textureSource('material.brick.soot.base')!, 3.2, 1.7),
-      normalMap: makeTexture(textureSource('material.brick.soot.normal')!, 3.2, 1.7, 'linear'),
-      normalScale: new THREE.Vector2(0.28, 0.28),
-      roughnessMap: makeTexture(textureSource('material.brick.soot.roughness')!, 3.2, 1.7, 'linear'),
-      roughness: 0.94,
-    });
+    const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+    const wallMaterial = createCalibratedPbrMaterial(textureLoader, buildingScene.assets, {
+      baseColorAsset: 'material.plaster.greige.base',
+      normalAsset: 'material.plaster.greige.normal',
+      roughnessAsset: 'material.plaster.greige.roughness',
+      normalScale: .1,
+      roughness: .92,
+      physical: { clearcoat: .012, clearcoatRoughness: .92 },
+    }, maxAnisotropy);
+    const brickMaterial = createCalibratedPbrMaterial(textureLoader, buildingScene.assets, {
+      baseColorAsset: 'material.brick.soot.base',
+      normalAsset: 'material.brick.soot.normal',
+      roughnessAsset: 'material.brick.soot.roughness',
+      normalScale: .24,
+      roughness: .94,
+    }, maxAnisotropy);
     const wallCapMaterial = material(0x55514a, undefined, 0.88);
-    const wainscotMaterial = new THREE.MeshStandardMaterial({
-      color: 0x8d6d55,
-      map: makeTexture(textureSource('material.walnut')!, 2.1, 1.1),
-      normalMap: makeTexture(textureSource('material.walnut.normal')!, 2.1, 1.1, 'linear'),
-      normalScale: new THREE.Vector2(.07, .07),
-      roughnessMap: makeTexture(textureSource('material.walnut.roughness')!, 2.1, 1.1, 'linear'),
-      roughness: .82,
-    });
-    const walnutMaterial = new THREE.MeshStandardMaterial({
-      color: 0x9b7359,
-      map: makeTexture(textureSource('material.walnut')!, 1.4, 1.4),
-      normalMap: makeTexture(textureSource('material.walnut.normal')!, 1.4, 1.4, 'linear'),
-      normalScale: new THREE.Vector2(.09, .09),
-      roughnessMap: makeTexture(textureSource('material.walnut.roughness')!, 1.4, 1.4, 'linear'),
-      roughness: .76,
-    });
-    const upholsteryMaterial = material(0x71816d, textureSource('material.upholstery.olive'), 0.98, 0, 1.8, 1.8);
-    const sofaLeatherMaterial = new THREE.MeshPhysicalMaterial({
-      color: 0xaab39a,
-      map: makeTexture(textureSource('material.leather.olive.base')!, 2.4, 2.1),
-      normalMap: makeTexture(textureSource('material.leather.olive.normal')!, 2.4, 2.1, 'linear'),
-      normalScale: new THREE.Vector2(0.18, 0.18),
-      roughnessMap: makeTexture(textureSource('material.leather.olive.roughness')!, 2.4, 2.1, 'linear'),
-      roughness: 0.78,
-      metalness: 0,
-      sheen: 0.22,
-      sheenColor: new THREE.Color(0x68725e),
-      sheenRoughness: 0.82,
-      clearcoat: 0.025,
-      clearcoatRoughness: 0.72,
-    });
+    const wainscotMaterial = createCalibratedPbrMaterial(textureLoader, buildingScene.assets, {
+      baseColorAsset: 'material.walnut', normalAsset: 'material.walnut.normal', roughnessAsset: 'material.walnut.roughness', normalScale: .055, roughness: .84,
+    }, maxAnisotropy);
+    const walnutMaterial = createCalibratedPbrMaterial(textureLoader, buildingScene.assets, {
+      baseColorAsset: 'material.walnut', normalAsset: 'material.walnut.normal', roughnessAsset: 'material.walnut.roughness', normalScale: .075, roughness: .74,
+      physical: { clearcoat: .018, clearcoatRoughness: .76 },
+    }, maxAnisotropy);
+    const upholsteryMaterial = createCalibratedBaseColorMaterial(textureLoader, buildingScene.assets, 'material.upholstery.olive', maxAnisotropy, .98);
+    const sofaLeatherMaterial = createCalibratedPbrMaterial(textureLoader, buildingScene.assets, {
+      baseColorAsset: 'material.leather.olive.base', normalAsset: 'material.leather.olive.normal', roughnessAsset: 'material.leather.olive.roughness', normalScale: .14, roughness: .78,
+      physical: { sheen: .22, sheenColor: 0x68725e, sheenRoughness: .82, clearcoat: .02, clearcoatRoughness: .74 },
+    }, maxAnisotropy);
     const sofaPipingMaterial = new THREE.LineBasicMaterial({ color: 0x2c2922, transparent: true, opacity: 0.82 });
-    const sageMaterial = new THREE.MeshStandardMaterial({
-      color: 0x778776,
-      map: makeTexture(textureSource('material.sage-paint')!, 1.2, 1.2),
-      normalMap: makeTexture(textureSource('material.sage-paint.normal')!, 1.2, 1.2, 'linear'),
-      normalScale: new THREE.Vector2(.055, .055),
-      roughnessMap: makeTexture(textureSource('material.sage-paint.roughness')!, 1.2, 1.2, 'linear'),
-      roughness: .9,
-    });
-    const tacticalMaterial = material(0x1f2924, textureSource('material.tactical-fabric'), 0.95, 0, 2, 2);
+    const sageMaterial = createCalibratedPbrMaterial(textureLoader, buildingScene.assets, {
+      baseColorAsset: 'material.sage-paint', normalAsset: 'material.sage-paint.normal', roughnessAsset: 'material.sage-paint.roughness', normalScale: .045, roughness: .9,
+    }, maxAnisotropy);
+    const tacticalMaterial = createCalibratedBaseColorMaterial(textureLoader, buildingScene.assets, 'material.tactical-fabric', maxAnisotropy, .95);
     const brassMaterial = material(0x9a7138, undefined, 0.38, 0.68);
     const darkMetalMaterial = material(0x182025, undefined, 0.44, 0.72);
     const fabricMaterial = material(0x7b7064, undefined, 0.98);
@@ -341,7 +321,7 @@ export function GameCanvas({
     const curtainMaterial = new THREE.MeshPhysicalMaterial({ color: 0x332927, roughness: 1, sheen: 0.18, sheenColor: new THREE.Color(0x8f654d) });
     const fireMaterial = new THREE.MeshStandardMaterial({ color: 0xffb15c, emissive: 0xff5b1e, emissiveIntensity: 4.6, roughness: 0.7 });
     const porcelainMaterial = material(0xd1cec3, undefined, 0.24);
-    const stoneMaterial = material(0x6b625c, textureSource('floor.concrete'), 0.96, 0, 1.2, 1.2);
+    const stoneMaterial = createCalibratedBaseColorMaterial(textureLoader, buildingScene.assets, 'floor.concrete', maxAnisotropy, .96);
     const heroMaterials: HeroAssetMaterials = {
       walnut: walnutMaterial,
       leather: sofaLeatherMaterial,
@@ -354,13 +334,6 @@ export function GameCanvas({
       porcelain: porcelainMaterial,
       fire: fireMaterial,
     };
-    const floorSources: Record<string, string | null> = {
-      'floor.herringbone': textureSource('floor.herringbone'),
-      'floor.checker': textureSource('floor.checker'),
-      'floor.carpet': textureSource('floor.carpet'),
-      'floor.concrete': textureSource('floor.concrete'),
-    };
-
     const worldRoot = new THREE.Group();
     scene.add(worldRoot);
     const propGroups = new Map<string, THREE.Group>();
@@ -386,7 +359,10 @@ export function GameCanvas({
       boxMaterial: THREE.Material,
       cast = true,
     ) => {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), boxMaterial);
+      const geometry = new THREE.BoxGeometry(...size);
+      const metersPerTile = getMaterialMetersPerTile(boxMaterial);
+      if (metersPerTile) applyMetricBoxUvs(geometry, metersPerTile);
+      const mesh = new THREE.Mesh(geometry, boxMaterial);
       mesh.position.set(...position);
       mesh.castShadow = cast;
       mesh.receiveShadow = true;
@@ -467,13 +443,12 @@ export function GameCanvas({
       const center = toWorld({ x: room.x + room.width / 2, y: room.y + room.height / 2 });
       const width = toMeters(room.width);
       const depth = toMeters(room.height);
-      const roomMaterial = material(
-        room.floorAsset === 'floor.carpet' ? 0x77716b : room.floorAsset === 'floor.concrete' ? 0x7e8581 : 0xb8aa95,
-        floorSources[room.floorAsset],
-        room.floorAsset === 'floor.carpet' ? 1 : 0.76,
-        0,
-        Math.max(1, width / 1.55),
-        Math.max(1, depth / 1.55),
+      const roomMaterial = createCalibratedBaseColorMaterial(
+        textureLoader,
+        buildingScene.assets,
+        room.floorAsset,
+        maxAnisotropy,
+        room.floorAsset === 'floor.carpet' ? 1 : .76,
       );
       addBox(worldRoot, [width, 0.08, depth], [center.x, -0.04, center.z], roomMaterial, false);
       const edgeMaterial = material(room.floorAsset === 'floor.carpet' ? 0x302c2a : 0x443329, undefined, 0.88);
@@ -488,8 +463,10 @@ export function GameCanvas({
       const isOuterSide = wall.id === 'outer-w' || wall.id === 'outer-e';
       const isInteriorCrossWall = wall.id.includes('-h-');
       const wallHeight = isSouthCutaway ? 0.34 : wall.id === 'outer-n' ? 2.38 : isOuterSide ? 1.78 : isInteriorCrossWall ? 0.72 : 1.96;
+      const wallGeometry = new THREE.BoxGeometry(width, wallHeight, depth);
+      applyMetricBoxUvs(wallGeometry, wallMaterial.userData.metersPerTile);
       const wallMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(width, wallHeight, depth),
+        wallGeometry,
         [wallMaterial, wallMaterial, wallCapMaterial, wallCapMaterial, wallMaterial, wallMaterial],
       );
       wallMesh.position.set(center.x, wallHeight / 2, center.z);
@@ -578,7 +555,7 @@ export function GameCanvas({
       motorTarget: null,
     }));
     const doorGroups = new Map<string, THREE.Group>();
-    const doorLeafMaterial = material(0x2d3a33, textureSource('material.sage-paint'), 0.78, 0, 1, 1.4);
+    const doorLeafMaterial = sageMaterial;
     for (const door of doors) {
       const hinge = toWorld(door.hinge);
       const group = new THREE.Group();
@@ -1259,11 +1236,11 @@ export function GameCanvas({
       residentRigs.push({ rig, spec: occupant, state: actorState, phase: index * 1.7, moving: false, colliderOutline });
     });
 
-    const ambient = new THREE.AmbientLight(0x66737c, cinematic ? 0.3 : 0.32);
+    const ambient = new THREE.AmbientLight(0x788087, cinematic ? 0.2 : 0.24);
     scene.add(ambient);
-    const hemi = new THREE.HemisphereLight(0x718aa1, 0x1d1412, cinematic ? 0.46 : 0.48);
+    const hemi = new THREE.HemisphereLight(0x8295a7, 0x241915, cinematic ? 0.34 : 0.4);
     scene.add(hemi);
-    const moon = new THREE.DirectionalLight(0x94b2ce, cinematic ? 1.32 : 1.38);
+    const moon = new THREE.DirectionalLight(0x94b2ce, cinematic ? .94 : 1.08);
     moon.position.set(-6, 8, 4);
     moon.castShadow = true;
     moon.shadow.mapSize.set(2048, 2048);
@@ -1289,7 +1266,7 @@ export function GameCanvas({
       const isKitchen = light.id.includes('kitchen');
       const isDining = light.id.includes('dining');
       const fixtureY = isSconce ? 1.62 : isKitchen ? 2.12 : 2.2;
-      const point = new THREE.PointLight(0xffa364, light.intensity * (isSconce ? 9.5 : 12), toMeters(light.radius) * 2.05, 2.0);
+      const point = new THREE.PointLight(0xffa364, light.intensity * (isSconce ? 7.2 : 8.6), toMeters(light.radius) * 2.05, 2.0);
       point.position.set(position.x, fixtureY, position.z);
       point.castShadow = cinematic && shadowLightCount < 2;
       if (point.castShadow) {
@@ -1301,6 +1278,16 @@ export function GameCanvas({
         shadowLightCount += 1;
       }
       scene.add(point);
+      // Cheap indirect-light proxy: practicals illuminate the ceiling first, then return
+      // a broad, shadowless warm fill. It lifts interior midtones without flattening contact shadows.
+      const bounce = new THREE.PointLight(
+        0xc98258,
+        light.intensity * (isSconce ? .45 : .72),
+        toMeters(light.radius) * 2.65,
+        1.45,
+      );
+      bounce.position.set(position.x, .62, position.z);
+      scene.add(bounce);
       const bulb = new THREE.Mesh(
         new THREE.SphereGeometry(isSconce ? .045 : .06, 16, 12),
         new THREE.MeshStandardMaterial({ color: 0xffd8a7, emissive: 0xff8a3d, emissiveIntensity: 3.2, roughness: 0.4 }),
@@ -1661,7 +1648,7 @@ export function GameCanvas({
         ? 'sepia(.7) hue-rotate(72deg) saturate(1.45) brightness(1.18)'
         : 'none';
       scene.background = new THREE.Color(state.nightVision ? 0x041109 : 0x060b10);
-      scene.fog = new THREE.FogExp2(state.nightVision ? 0x06140b : 0x081016, state.nightVision ? 0.021 : 0.018);
+      scene.fog = new THREE.FogExp2(state.nightVision ? 0x06140b : 0x081016, state.nightVision ? 0.016 : 0.011);
       hemi.color.setHex(state.nightVision ? 0x83d59a : 0x718aa1);
       moon.color.setHex(state.nightVision ? 0x6bdc88 : 0x9cb8d4);
       updateResidents(dt, elapsed, state.paused);
@@ -1746,12 +1733,18 @@ export function GameCanvas({
       }
 
       if (state.cameraMode === 'follow') {
-        const desired = playerRig.root.position.clone().addScaledVector(forward, -4.2).add(new THREE.Vector3(0, 6.2, 0));
+        const desired = playerRig.root.position.clone().addScaledVector(forward, -3.55).add(new THREE.Vector3(0, 5.45, 0));
         camera.position.lerp(desired, 1 - Math.pow(0.002, dt));
-        const target = playerRig.root.position.clone().add(new THREE.Vector3(0, 0.85, 0));
+        const target = playerRig.root.position.clone().addScaledVector(forward, .65).add(new THREE.Vector3(0, .88, 0));
         camera.lookAt(target);
       } else {
         controls.update();
+      }
+      const desiredFov = state.cameraMode === 'follow' ? 41 : cinematic ? 34 : 38;
+      const nextFov = THREE.MathUtils.damp(camera.fov, desiredFov, 8, dt);
+      if (Math.abs(nextFov - camera.fov) > .001) {
+        camera.fov = nextFov;
+        camera.updateProjectionMatrix();
       }
 
       renderer.domElement.dataset.playerX = player.x.toFixed(1);

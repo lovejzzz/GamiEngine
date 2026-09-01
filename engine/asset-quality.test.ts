@@ -4,10 +4,27 @@ import { auditAssetQuality, auditSceneQuality } from './asset-quality';
 import type { AssetRecipe } from './types';
 
 describe('asset quality bridge', () => {
-  it('accepts the sofa only after reference, geometry and PBR are connected', () => {
-    const sofa = assetRecipes.find((asset) => asset.id === 'prop.sofa');
-    expect(sofa).toBeTruthy();
-    expect(auditAssetQuality(sofa!, assetRecipes)).toMatchObject({ tier: 'hero', ready: true, score: 100 });
+  it('accepts the sofa only after asset-specific current-revision browser evidence', () => {
+    const sofa = assetRecipes.find((asset) => asset.id === 'prop.sofa')!;
+    const reviewed: AssetRecipe = {
+      ...sofa,
+      quality: {
+        ...sofa.quality!,
+        status: 'production',
+        craft: {
+          ...sofa.quality!.craft!,
+          review: {
+            status: 'passed',
+            evidence: ['browser:prop.sofa:golden-room-close', 'revision:prop.sofa:test-sha'],
+            checks: {
+              silhouette: true, proportion: true, construction: true,
+              materialResponse: true, interaction: true, collision: true,
+            },
+          },
+        },
+      },
+    };
+    expect(auditAssetQuality(reviewed, assetRecipes)).toMatchObject({ tier: 'hero', ready: true, score: 100 });
   });
 
   it('rejects a semantically correct hero asset that still uses generic construction shortcuts', () => {
@@ -36,8 +53,9 @@ describe('asset quality bridge', () => {
 
   it('keeps the whole demo honestly below production while critical craft areas remain unfinished', () => {
     const audit = auditSceneQuality(buildingScene);
-    expect(audit).toMatchObject({ score: 63, productionReady: false, stage: 'prototype' });
-    expect(audit.heroAssets).toEqual({ passed: 4, total: 4 });
+    expect(audit).toMatchObject({ score: 52, productionReady: false, stage: 'prototype' });
+    expect(audit.heroAssets).toEqual({ passed: 0, total: 4 });
+    expect(audit.blockers).toContain('Hero 资产门禁：0/4 通过');
     expect(audit.blockers.some((blocker) => blocker.includes('非玩具化造型语言'))).toBe(true);
     expect(audit.blockers).toEqual(expect.arrayContaining([
       expect.stringContaining('角色造型可信度'),

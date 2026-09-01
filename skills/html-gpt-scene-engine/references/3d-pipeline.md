@@ -47,6 +47,10 @@ Do not multiply a finished base-color map by an arbitrary dark material color. I
 
 Validate actual UV coverage rather than declared texel density. Shared procedural materials applied to unrelated default UVs often map one complete texture tile onto a tiny knob and the same tile onto a two-meter tabletop. Require consistent pixels per meter, correct grain direction, no visible seams, and separate UV/material variants when construction direction changes.
 
+For procedural boxes, rewrite each face's UVs from local metric coordinates and the texture recipe's `metersPerTile`; do not rely on one shared texture repeat. Project side faces from depth/height, top faces from width/depth, and front/back faces from width/height. Keep this transform testable with a two-metre versus half-metre fixture so a later refactor cannot silently restore one-tile-per-object stretching.
+
+When replacing a dark albedo multiplier with a neutral white factor, recalibrate lighting in layers. First set exposure and environment energy under a neutral view, then direct practicals, then a restrained indirect-fill proxy, then contact AO and finally the mood grade. If the first result becomes chalky or “cream model” bright, reduce lighting energy rather than reintroducing an undocumented dark material multiplier.
+
 ## 4. Cross the production bridge
 
 Choose the bridge by asset class: structured architecture, stairs, doors, and cabinets usually compile from measured parametric blueprints; irregular static props may use an image-to-3D or authored glTF cleanup path; characters reuse a shared rig and authored clips. Preserve a renderer-safe procedural fallback.
@@ -70,3 +74,5 @@ Keep a renderer-safe procedural fallback, but expose whether the authored model 
 ## 6. Validate in play
 
 Walk through the complete space with the actual input scheme. Test collision at corners, pushing both sides of doors, nearest-child selection, one-child-only changes, floor transitions, state restoration, follow/editor cameras, low viewport sizes, missing textures, and console errors. Inspect both visual plausibility and simulation correctness.
+
+Treat the follow camera as a separate composition, not a zoomed editor camera. Test it beside tall doors, half walls, stairs and furniture; verify the player stays readable and the camera does not spend most of the frame outside the cutaway. Tune height, trailing distance and FOV together, and record any remaining occlusion as a camera-system blocker rather than blaming the asset.

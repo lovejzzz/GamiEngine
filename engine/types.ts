@@ -98,7 +98,7 @@ export type AssetRecipe = {
     texelDensityPxPerMeter: number;
   };
   quality?: {
-    status: 'fallback' | 'production';
+    status: 'fallback' | 'candidate' | 'production';
     minBevelRadiusM: number;
     triangleBudget: number;
     maxDrawCalls: number;

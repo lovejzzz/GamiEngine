@@ -43,6 +43,7 @@ Build a playable scene system, not a flattened picture. GPT-generated pixels mus
 - Audit a stalled visual result from upstream to downstream: framing/readability, silhouette and construction, UV and material calibration, indirect/contact lighting, set-dressing variation, then animation and post effects. Stop polishing downstream layers when an upstream layer is still visibly dominant.
 - Treat base-color textures as measured albedo. Keep the material color factor white unless a deliberate, measured tint is required; multiplying an already colored map by a dark factor can erase half or more of its luminance and make valid PBR maps look muddy.
 - Require a calibrated reference-to-runtime comparison for Hero assets: matching view, silhouette or landmark overlay, neutral-light turntable, and a scene-distance capture. Prose such as “learn silhouette” or a topology-name test is not evidence that the modeled result resembles the reference.
+- Iterate one Golden Room before propagating a scene-wide visual change. Capture a full-frame editor view, a player-follow view and interaction/stair evidence; classify every change as geometry, UV/material, lighting, camera or post-processing. Keep only changes whose improvement survives all relevant views—an editor-frame improvement that creates follow-camera occlusion is not a pass.
 
 ## Workflow
 
@@ -87,6 +88,7 @@ Judge two independent outcomes:
 - Route-clearance audit: traverse every required room-to-room path with dynamic occupants active and with representative movable props in alternate states. Decorative fixtures and frozen occupants must not combine into an accidental choke point; preserve at least one intended actor-width route unless blockage is deliberate gameplay.
 - Reference screenshot audit: judge the running viewport at the same approximate aspect ratio and framing as the approved study. Check how much of the frame the building occupies, which walls occlude rooms, location of focal practical lights, cool exterior versus warm interior separation, material-family readability, and whether each hero room has enough secondary and tertiary set dressing to feel inhabited.
 - Contact-depth audit: use real shadows and, when performance permits, screen-space ambient occlusion or equivalent contact shading. Bloom is a restrained accent for emissive bulbs and fire, not a substitute for local lights or surface response.
+- Runtime-warning audit: inspect console warnings as well as errors. A deprecated renderer option that silently falls back is an unstable implementation, even when the current screenshot looks correct.
 - Anti-miniature audit: inspect the full composition and a follow-camera close-up. Fail when heads read as spheres or disks, arms hang in a display pose, wall trim is uniformly metallic, fixtures repeat without hierarchy, hard and soft objects share the same edge radius, or placeholder bathroom/nursery/storage bodies dominate the frame.
 
 Do not reproduce a copyrighted game level room-for-room when a user gives it as a reference. Extract the desired design qualities and create an original layout, cast, and asset identity.

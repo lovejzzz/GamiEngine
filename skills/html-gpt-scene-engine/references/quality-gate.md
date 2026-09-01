@@ -51,3 +51,5 @@ Use this audit when repeated polishing produces only small gains. Evaluate in or
 7. **Character presentation:** inspect the actual dressed, animated character at a useful close distance. Rigid cylinders and spheres attached to a quality body rig still read as a toy costume, and a high triangle count in the hidden carrier does not improve the visible garment silhouette.
 
 Evidence must come from the current shipped revision. Do not reuse one screenshot to pass unrelated assets, and do not encode all review booleans through a helper that always returns `true`. A valid gate should fail when the renderer changes, the wrong asset loads, maps become invalid, the camera hides construction, or the comparison capture visibly diverges from its reference.
+
+Bind evidence to both asset and revision in machine-readable form, for example `browser:<asset-id>:<capture-id>` and `revision:<asset-id>:<commit>`. Keep assets at `candidate` while either binding is absent. A shared room screenshot may support scene composition, but it cannot independently certify the sofa, cabinet, table and chair.
