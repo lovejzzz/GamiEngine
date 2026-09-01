@@ -11,6 +11,14 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { createParametricSofa } from './parametric-asset-factory';
+import {
+  createTownhouseBed,
+  createVictorianBookcase,
+  createVictorianDiningChair,
+  createVictorianDiningTable,
+  createVictorianFireplace,
+  type HeroAssetMaterials,
+} from './hero-asset-factory';
 import { buildingScene } from '@/engine/demo-scene';
 import { resolveRuntimeSource } from '@/engine/asset-registry';
 import type { FloorSpec, InteractionProfile, OccupantSpec, PropSpec, RectSpec, Vec2 } from '@/engine/types';
@@ -235,8 +243,22 @@ export function GameCanvas({
       roughness: 0.94,
     });
     const wallCapMaterial = material(0x55514a, undefined, 0.88);
-    const wainscotMaterial = material(0x8d6d55, textureSource('material.walnut'), 0.8, 0, 2.1, 1.1);
-    const walnutMaterial = material(0xb28e72, textureSource('material.walnut'), 0.74, 0, 1.4, 1.4);
+    const wainscotMaterial = new THREE.MeshStandardMaterial({
+      color: 0x8d6d55,
+      map: makeTexture(textureSource('material.walnut')!, 2.1, 1.1),
+      normalMap: makeTexture(textureSource('material.walnut.normal')!, 2.1, 1.1, 'linear'),
+      normalScale: new THREE.Vector2(.07, .07),
+      roughnessMap: makeTexture(textureSource('material.walnut.roughness')!, 2.1, 1.1, 'linear'),
+      roughness: .82,
+    });
+    const walnutMaterial = new THREE.MeshStandardMaterial({
+      color: 0x9b7359,
+      map: makeTexture(textureSource('material.walnut')!, 1.4, 1.4),
+      normalMap: makeTexture(textureSource('material.walnut.normal')!, 1.4, 1.4, 'linear'),
+      normalScale: new THREE.Vector2(.09, .09),
+      roughnessMap: makeTexture(textureSource('material.walnut.roughness')!, 1.4, 1.4, 'linear'),
+      roughness: .76,
+    });
     const upholsteryMaterial = material(0x71816d, textureSource('material.upholstery.olive'), 0.98, 0, 1.8, 1.8);
     const sofaLeatherMaterial = new THREE.MeshPhysicalMaterial({
       color: 0xaab39a,
@@ -253,7 +275,14 @@ export function GameCanvas({
       clearcoatRoughness: 0.72,
     });
     const sofaPipingMaterial = new THREE.LineBasicMaterial({ color: 0x2c2922, transparent: true, opacity: 0.82 });
-    const sageMaterial = material(0x8b9b89, textureSource('material.sage-paint'), 0.86, 0, 1.2, 1.2);
+    const sageMaterial = new THREE.MeshStandardMaterial({
+      color: 0x778776,
+      map: makeTexture(textureSource('material.sage-paint')!, 1.2, 1.2),
+      normalMap: makeTexture(textureSource('material.sage-paint.normal')!, 1.2, 1.2, 'linear'),
+      normalScale: new THREE.Vector2(.055, .055),
+      roughnessMap: makeTexture(textureSource('material.sage-paint.roughness')!, 1.2, 1.2, 'linear'),
+      roughness: .9,
+    });
     const tacticalMaterial = material(0x1f2924, textureSource('material.tactical-fabric'), 0.95, 0, 2, 2);
     const brassMaterial = material(0x9a7138, undefined, 0.38, 0.68);
     const darkMetalMaterial = material(0x182025, undefined, 0.44, 0.72);
@@ -262,6 +291,19 @@ export function GameCanvas({
     const curtainMaterial = new THREE.MeshPhysicalMaterial({ color: 0x332927, roughness: 1, sheen: 0.18, sheenColor: new THREE.Color(0x8f654d) });
     const fireMaterial = new THREE.MeshStandardMaterial({ color: 0xffb15c, emissive: 0xff5b1e, emissiveIntensity: 4.6, roughness: 0.7 });
     const porcelainMaterial = material(0xd1cec3, undefined, 0.24);
+    const stoneMaterial = material(0x6b625c, textureSource('floor.concrete'), 0.96, 0, 1.2, 1.2);
+    const heroMaterials: HeroAssetMaterials = {
+      walnut: walnutMaterial,
+      leather: sofaLeatherMaterial,
+      upholstery: upholsteryMaterial,
+      brass: brassMaterial,
+      darkMetal: darkMetalMaterial,
+      stone: stoneMaterial,
+      sage: sageMaterial,
+      fabric: fabricMaterial,
+      porcelain: porcelainMaterial,
+      fire: fireMaterial,
+    };
     const floorSources: Record<string, string | null> = {
       'floor.herringbone': textureSource('floor.herringbone'),
       'floor.checker': textureSource('floor.checker'),
@@ -465,15 +507,10 @@ export function GameCanvas({
     };
 
     const createBed = (prop: PropSpec) => {
-      const group = new THREE.Group();
       const width = toMeters(prop.size.x);
       const depth = toMeters(prop.size.y);
-      addBox(group, [width, 0.22, depth], [0, 0.2, 0], walnutMaterial);
-      addBox(group, [width * 0.94, 0.3, depth * 0.9], [0, 0.42, 0.04], fabricMaterial);
-      addBox(group, [width, 0.7, 0.12], [0, 0.62, -depth * 0.47], upholsteryMaterial);
-      addBox(group, [width * 0.36, 0.12, depth * 0.2], [-width * 0.23, 0.65, -depth * 0.28], material(0xd9d0c3, undefined, 1));
-      addBox(group, [width * 0.36, 0.12, depth * 0.2], [width * 0.23, 0.65, -depth * 0.28], material(0xd9d0c3, undefined, 1));
-      const drawer = addBox(group, [width * 0.58, 0.18, depth * 0.32], [0, 0.15, depth * 0.23], walnutMaterial);
+      const group = createTownhouseBed(width, depth, heroMaterials);
+      const drawer = addRoundedBox(group, [width * 0.58, 0.18, depth * 0.32], [0, 0.15, depth * 0.23], walnutMaterial, 0.008);
       drawer.visible = false;
       propParts.set(`${prop.id}:searched`, drawer);
       bedDrawers.set(prop.id, { object: drawer, closedZ: drawer.position.z, openZ: drawer.position.z + depth * 0.48 });
@@ -481,19 +518,9 @@ export function GameCanvas({
     };
 
     const createTable = (prop: PropSpec) => {
-      const group = new THREE.Group();
       const width = toMeters(prop.size.x);
       const depth = toMeters(prop.size.y);
-      const top = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.12, 48), walnutMaterial);
-      top.scale.set(width, 1, depth);
-      top.position.y = 0.78;
-      top.castShadow = true;
-      top.receiveShadow = true;
-      group.add(top);
-      addBox(group, [0.15, 0.72, 0.15], [-width * 0.28, 0.38, -depth * 0.22], walnutMaterial);
-      addBox(group, [0.15, 0.72, 0.15], [width * 0.28, 0.38, -depth * 0.22], walnutMaterial);
-      addBox(group, [0.15, 0.72, 0.15], [-width * 0.28, 0.38, depth * 0.22], walnutMaterial);
-      addBox(group, [0.15, 0.72, 0.15], [width * 0.28, 0.38, depth * 0.22], walnutMaterial);
+      const group = createVictorianDiningTable(width, depth, heroMaterials);
       for (const side of [-1, 1]) {
         const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.018, 24), porcelainMaterial);
         plate.position.set(side * width * 0.22, 0.855, 0);
@@ -509,16 +536,9 @@ export function GameCanvas({
     };
 
     const createChair = (prop: PropSpec) => {
-      const group = new THREE.Group();
       const width = toMeters(prop.size.x);
       const depth = toMeters(prop.size.y);
-      addRoundedBox(group, [width * 0.82, 0.12, depth * 0.82], [0, 0.48, 0], walnutMaterial, 0.035);
-      addRoundedBox(group, [width * 0.82, 0.72, 0.1], [0, 0.78, -depth * 0.38], walnutMaterial, 0.03);
-      addRoundedBox(group, [width * 0.66, 0.28, 0.115], [0, 0.86, -depth * 0.31], upholsteryMaterial, 0.06);
-      for (const x of [-1, 1]) for (const z of [-1, 1]) {
-        addBox(group, [0.07, 0.46, 0.07], [x * width * 0.34, 0.23, z * depth * 0.34], walnutMaterial);
-      }
-      return group;
+      return createVictorianDiningChair(width, depth, heroMaterials);
     };
 
     const createStairs = (prop: PropSpec) => {
@@ -554,18 +574,31 @@ export function GameCanvas({
       const group = new THREE.Group();
       const width = toMeters(prop.size.x);
       const depth = toMeters(prop.size.y);
+      const addCabinetPanel = (parent: THREE.Object3D, panelWidth: number, panelHeight: number, x: number, y: number, z: number) => {
+        addRoundedBox(parent, [panelWidth, panelHeight, .035], [x, y, z], sageMaterial, .004);
+        const rail = Math.min(panelWidth, panelHeight) * .1;
+        addBox(parent, [panelWidth * .82, rail, .025], [x, y + panelHeight * .37, z + .027], sageMaterial, false);
+        addBox(parent, [panelWidth * .82, rail, .025], [x, y - panelHeight * .37, z + .027], sageMaterial, false);
+        addBox(parent, [rail, panelHeight * .68, .025], [x - panelWidth * .36, y, z + .027], sageMaterial, false);
+        addBox(parent, [rail, panelHeight * .68, .025], [x + panelWidth * .36, y, z + .027], sageMaterial, false);
+      };
       addBox(group, [width * 0.92, 0.88, depth * 0.3], [0.05, 0.44, -depth * 0.34], sageMaterial);
       addBox(group, [width * 0.28, 0.88, depth * 0.75], [-width * 0.34, 0.44, depth * 0.04], sageMaterial);
-      addBox(group, [width * 0.96, 0.1, depth * 0.34], [0.02, 0.93, -depth * 0.34], darkMetalMaterial);
-      addBox(group, [width * 0.32, 0.1, depth * 0.78], [-width * 0.34, 0.93, depth * 0.04], darkMetalMaterial);
+      addBox(group, [width * .96, .11, depth * .34], [.02, .93, -depth * .34], stoneMaterial);
+      addBox(group, [width * .32, .11, depth * .78], [-width * .34, .93, depth * .04], stoneMaterial);
+      addBox(group, [width * .96, .1, depth * .32], [.02, .05, -depth * .34], sageMaterial);
+      addBox(group, [width * .3, .1, depth * .76], [-width * .34, .05, depth * .04], sageMaterial);
       const tileMaterial = material(0xc8bca8, undefined, 0.7);
       addBox(group, [width * 0.88, 0.55, 0.035], [width * 0.04, 1.28, -depth * 0.5], tileMaterial, false);
       for (let seam = -4; seam <= 4; seam += 1) addBox(group, [0.012, 0.52, 0.012], [seam * width * 0.1, 1.28, -depth * 0.515], darkMetalMaterial, false);
       for (let seam = -1; seam <= 1; seam += 1) addBox(group, [width * 0.86, 0.012, 0.012], [width * 0.04, 1.28 + seam * 0.18, -depth * 0.515], darkMetalMaterial, false);
       for (const x of [-0.28, 0.12, 0.34]) {
-        addRoundedBox(group, [width * 0.2, 0.56, 0.25], [width * x, 1.57, -depth * 0.39], sageMaterial, 0.025);
+        addRoundedBox(group, [width * 0.2, 0.56, 0.25], [width * x, 1.57, -depth * 0.39], sageMaterial, 0.005);
+        addCabinetPanel(group, width * .16, .46, width * x, 1.57, -depth * .248);
         addBox(group, [0.025, 0.25, 0.04], [width * x + width * 0.07, 1.57, -depth * 0.245], brassMaterial, false);
       }
+      addBox(group, [width * .9, .07, depth * .3], [width * .04, 1.9, -depth * .39], sageMaterial);
+      addBox(group, [width * .94, .05, depth * .34], [width * .04, 1.95, -depth * .39], sageMaterial);
       const sink = new THREE.Mesh(new THREE.BoxGeometry(width * 0.25, 0.055, depth * 0.19), darkMetalMaterial);
       sink.position.set(width * 0.05, 0.995, -depth * 0.34);
       group.add(sink);
@@ -579,7 +612,7 @@ export function GameCanvas({
         burner.position.set(x, 0.995, z);
         group.add(burner);
       }
-      for (let panel = -2; panel <= 2; panel += 1) addBox(group, [width * 0.16, 0.54, 0.025], [panel * width * 0.17, 0.49, -depth * 0.505], wainscotMaterial, false);
+      for (let panel = -2; panel <= 2; panel += 1) addCabinetPanel(group, width * .15, .52, panel * width * .17, .49, -depth * .505);
       for (const part of prop.parts ?? []) {
         const local = new THREE.Vector3(
           toMeters(part.position.x - prop.position.x),
@@ -590,8 +623,8 @@ export function GameCanvas({
         if (part.interaction.motion === 'hinge') {
           const hinge = new THREE.Group();
           hinge.position.set(local.x, 0.48, local.z);
-          addRoundedBox(hinge, [0.34, 0.58, 0.055], [0.17, 0, 0], sageMaterial, 0.018);
-          addBox(hinge, [0.24, 0.43, 0.024], [0.17, 0, 0.036], wainscotMaterial, false);
+          addRoundedBox(hinge, [0.34, 0.58, 0.055], [0.17, 0, 0], sageMaterial, 0.004);
+          addCabinetPanel(hinge, .26, .46, .17, 0, .035);
           addBox(hinge, [0.035, 0.035, 0.075], [0.29, 0, 0.02], brassMaterial);
           group.add(hinge);
           propParts.set(id, hinge);
@@ -702,19 +735,9 @@ export function GameCanvas({
         worldRoot.add(shade);
       };
       const addBookcase = (x: number, z: number, rotationY = 0, width = 0.92) => {
-        const group = new THREE.Group();
+        const group = createVictorianBookcase(width, 1.52, .3, heroMaterials);
         group.position.set(x, 0, z);
         group.rotation.y = rotationY;
-        addRoundedBox(group, [width, 1.42, 0.24], [0, 0.71, 0], walnutMaterial, 0.025);
-        addBox(group, [width * 0.86, 1.26, 0.08], [0, 0.7, -0.1], material(0x241b18, undefined, 0.9), false);
-        for (const shelfY of [0.25, 0.56, 0.87, 1.18]) {
-          addBox(group, [width * 0.9, 0.045, 0.28], [0, shelfY, 0.02], walnutMaterial);
-          for (let book = 0; book < 7; book += 1) {
-            const colors = [0x4c302d, 0x2d4740, 0x6c5738, 0x273744, 0x716047];
-            const bookWidth = 0.045 + (book % 3) * 0.008;
-            addBox(group, [bookWidth, 0.16 + (book % 2) * 0.035, 0.13], [-width * 0.34 + book * width * 0.105, shelfY + 0.1, -0.01], material(colors[book % colors.length], undefined, 0.92), false);
-          }
-        }
         worldRoot.add(group);
       };
       const addPlant = (x: number, z: number) => {
@@ -732,25 +755,8 @@ export function GameCanvas({
       };
       const addFireplace = () => {
         const point = toWorld({ x: 556, y: 87 });
-        const group = new THREE.Group();
+        const group = createVictorianFireplace(1.12, 1.18, .28, heroMaterials);
         group.position.set(point.x, 0, point.z);
-        group.rotation.y = Math.PI;
-        addRoundedBox(group, [1.15, 1.16, 0.3], [0, 0.58, 0], walnutMaterial, 0.035);
-        addBox(group, [0.72, 0.7, 0.33], [0, 0.39, -0.03], material(0x100d0c, undefined, 0.96), false);
-        addRoundedBox(group, [0.22, 0.92, 0.39], [-0.52, 0.49, 0], walnutMaterial, 0.025);
-        addRoundedBox(group, [0.22, 0.92, 0.39], [0.52, 0.49, 0], walnutMaterial, 0.025);
-        addRoundedBox(group, [1.38, 0.16, 0.48], [0, 1.18, 0], walnutMaterial, 0.035);
-        addBox(group, [0.58, 0.055, 0.18], [0, 0.18, -0.19], fireMaterial, false);
-        for (const x of [-0.2, 0, 0.2]) {
-          const log = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.5, 10), material(0x42261b, undefined, 1));
-          log.rotation.z = Math.PI / 2;
-          log.rotation.y = x * 1.8;
-          log.position.set(x * 0.6, 0.13, -0.22);
-          group.add(log);
-        }
-        const fireLight = new THREE.PointLight(0xff6d2a, 4.8, 2.8, 2);
-        fireLight.position.set(0, 0.42, -0.52);
-        group.add(fireLight);
         worldRoot.add(group);
       };
       for (const room of floor.rooms) {

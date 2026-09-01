@@ -67,7 +67,7 @@ export type AssetRecipe = {
   referenceStudy?: {
     source: string;
     views?: Array<'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | 'perspective'>;
-    learn: Array<'silhouette' | 'proportion' | 'material-zones' | 'wear-language' | 'color-palette'>;
+    learn: Array<'silhouette' | 'proportion' | 'construction' | 'material-zones' | 'hardware-scale' | 'wear-language' | 'color-palette'>;
     runtimeRule: 'never-render-directly';
   };
   geometry?: {

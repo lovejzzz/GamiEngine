@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { auditAssetQuality } from './asset-quality';
 import { buildingScene } from './demo-scene';
 
 describe('Gami Engine demo manifest', () => {
@@ -69,6 +70,24 @@ describe('Gami Engine demo manifest', () => {
       expect(asset.texture?.semantic).toBeTruthy();
       expect(asset.texture?.metersPerTile.x).toBeGreaterThan(0);
       expect(asset.texture?.metersPerTile.y).toBeGreaterThan(0);
+    }
+  });
+
+  it('bridges hero furniture studies into construction-specific production assets', () => {
+    for (const id of ['reference.dining-furniture-multiview-v1', 'reference.casework-multiview-v1']) {
+      const study = assets.get(id);
+      expect(study?.referenceStudy?.runtimeRule).toBe('never-render-directly');
+      expect(new Set(study?.referenceStudy?.views).size).toBeGreaterThanOrEqual(4);
+      expect(study?.referenceStudy?.learn).toContain('construction');
+    }
+
+    for (const id of ['prop.table', 'prop.chair', 'prop.kitchen']) {
+      const asset = assets.get(id)!;
+      expect(asset.geometry?.qualityTier).toBe('hero');
+      expect(asset.geometry?.blueprintId).toBeTruthy();
+      expect(asset.geometry?.independentlyModeledParts?.length).toBeGreaterThanOrEqual(5);
+      expect(asset.quality?.minBevelRadiusM).toBeLessThanOrEqual(.004);
+      expect(auditAssetQuality(asset, buildingScene.assets)).toMatchObject({ ready: true, score: 100 });
     }
   });
 

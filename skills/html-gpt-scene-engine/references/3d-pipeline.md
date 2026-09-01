@@ -16,6 +16,8 @@ Record only facts that can be modeled consistently:
 - independently movable parts and their pivot/axis;
 - repeated motifs, edge radius, thickness, hardware scale, and wear locations.
 
+Convert those facts into a construction blueprint before writing mesh code. The blueprint should name the topology family for each defining part—box/extrusion for slabs and panels, lathe for turned legs or posts, curve/tube for bent rails, authored/glTF topology for irregular carving—and record real dimensions instead of one shared visual roundness value. Color and texture matching do not count as construction matching.
+
 Do not photogrammetrically copy accidental lighting, perspective distortion, background context, or impossible geometry from the generated image.
 
 For a whole-room or whole-building study, write an art-direction extraction record before modeling: dominant and accent colors, warm/cool light hierarchy, wall/floor/furniture material zones, human-scale reference dimensions, trim and hardware language, and where wear is allowed to accumulate. The renderer must demonstrate those extracted rules in play; storing a thumbnail alone is not integration.
@@ -25,6 +27,15 @@ For a whole-room or whole-building study, write an art-direction extraction reco
 Create the static carcass and every gameplay-relevant moving child as separate meshes. Give each child a stable ID shared by the scene manifest, interaction state, animation track, collider, and save record. A visible seam is not enough: if a player can open it, the part needs real thickness, interior/reveal geometry, and a hinge or slide axis.
 
 Prefer procedural primitives for graybox and compact web demos. Move to glTF when silhouette complexity, authored UVs, skinning, or animation requires it. Keep a procedural missing-asset fallback.
+
+For production procedural furniture, use primitives according to construction rather than convenience:
+
+- hard wood, stone and metal: millimeter-scale bevels, visible thickness, joinery and profile layers;
+- casework: carcass, face frame, rails, stiles, inset or raised panels, cornice, plinth and hardware as legible parts;
+- turned furniture: lathed legs/posts plus real aprons, stretchers and joints;
+- upholstery: frame/deck, cushions, piping, seams or tufting, rolled parts and support feet; broad radii belong only to genuinely soft volumes.
+
+Do not mark an asset `production` solely because the reference board is attractive or the mesh has many parts. Inspect it at gameplay distance and close-up; if its characteristic joints and profiles do not read, keep it as a fallback and revise the blueprint.
 
 ## 3. Generate runtime materials
 

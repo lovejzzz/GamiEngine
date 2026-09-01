@@ -62,10 +62,20 @@ export function createParametricSofa(width: number, depth: number, materials: So
   ));
   group.add(roundedPart(
     [usableWidth + gap * 1.5, 0.13, depth * 0.67],
-    0.045,
+    0.026,
     materials.leather,
     [0, p.seatHeight - 0.1, 0.045],
   ));
+
+  const frontRail = roundedPart(
+    [width * .82, .12, depth * .1],
+    .012,
+    materials.walnut,
+    [0, p.legHeight + .11, depth * .36],
+    2,
+  );
+  frontRail.name = 'carved-front-rail';
+  group.add(frontRail);
 
   for (const side of [-1, 1]) {
     const x = side * (width / 2 - armWidth * 0.72);
@@ -89,19 +99,28 @@ export function createParametricSofa(width: number, depth: number, materials: So
 
   const backFrame = roundedPart(
     [width * 0.84, 0.67, depth * 0.13],
-    0.045,
+    0.018,
     materials.walnut,
     [0, p.backHeight - 0.18, -depth * 0.39],
-    3,
+    2,
   );
   backFrame.rotation.x = -0.08;
   group.add(backFrame);
+  const crestRail = roundedPart(
+    [width * .88, .095, depth * .15],
+    .014,
+    materials.walnut,
+    [0, p.backHeight + .16, -depth * .39],
+    2,
+  );
+  crestRail.name = 'walnut-crest-rail';
+  group.add(crestRail);
 
   for (let index = -1; index <= 1; index += 1) {
     const x = index * (cushionWidth + gap);
     const seat = roundedPart(
       [cushionWidth, 0.17, depth * 0.61],
-      0.055,
+      0.032,
       materials.leather,
       [x, p.seatHeight, depth * 0.045],
       5,
@@ -114,7 +133,7 @@ export function createParametricSofa(width: number, depth: number, materials: So
 
     const back = roundedPart(
       [cushionWidth * 0.98, 0.5, depth * 0.2],
-      0.065,
+      0.032,
       materials.leather,
       [x, p.backHeight - 0.08, -depth * 0.29],
       5,
@@ -124,6 +143,18 @@ export function createParametricSofa(width: number, depth: number, materials: So
     back.rotation.z = index * -0.012;
     addPiping(back, materials.piping);
     group.add(back);
+
+    for (const buttonX of [-.23, .23]) for (const buttonY of [-.14, .14]) {
+      const button = finishMesh(new THREE.Mesh(new THREE.SphereGeometry(.021, 12, 8), materials.leather));
+      button.scale.z = .38;
+      button.position.set(
+        x + buttonX * cushionWidth,
+        p.backHeight - .08 + buttonY,
+        -depth * .18,
+      );
+      button.name = `tuft-button-${index + 2}`;
+      group.add(button);
+    }
   }
 
   for (const x of [-1, 1]) for (const z of [-1, 1]) {
