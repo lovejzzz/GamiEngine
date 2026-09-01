@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import {
   Boxes, Braces, Building2, Camera, Check, ChevronRight, CirclePause, CirclePlay,
   Cuboid, DoorOpen, Download, Eye, Footprints, Gamepad2, Grid3X3, Image as ImageIcon,
-  Layers3, LoaderCircle, Moon, Sparkles, Sun, UserRound, WandSparkles,
+  Layers3, LoaderCircle, Maximize2, Minimize2, Moon, Sparkles, Sun, UserRound, WandSparkles,
 } from 'lucide-react';
 import { GameCanvas, type CameraMode } from './game-canvas';
 import { buildingScene } from '@/engine/demo-scene';
@@ -27,6 +27,7 @@ export function GameEngineStudio() {
   const [showPhysics, setShowPhysics] = useState(false);
   const [nightVision, setNightVision] = useState(false);
   const [cameraMode, setCameraMode] = useState<CameraMode>('editor');
+  const [cinematic, setCinematic] = useState(true);
   const [status, setStatus] = useState('WASD 移动 · E 开门 · Q 互动 · 走入楼梯并沿踏步上下楼');
   const [generating, setGenerating] = useState(false);
   const [notice, setNotice] = useState('');
@@ -81,7 +82,7 @@ export function GameEngineStudio() {
   };
 
   return (
-    <main className="studio-shell">
+    <main className={cinematic ? 'studio-shell cinematic' : 'studio-shell'}>
       <header className="topbar">
         <div className="brand-lockup">
           <span className="brand-mark"><Boxes size={18} /></span>
@@ -143,10 +144,11 @@ export function GameEngineStudio() {
               <button className={cameraMode === 'follow' ? 'active' : ''} onClick={() => setCameraMode((value) => value === 'editor' ? 'follow' : 'editor')}><Camera size={14} /> {cameraMode === 'editor' ? '俯视编辑' : '跟随游玩'}</button>
               <button className={nightVision ? 'active' : ''} onClick={() => setNightVision((value) => !value)}>{nightVision ? <Moon size={14} /> : <Sun size={14} />} NV</button>
               <button className={showPhysics ? 'active' : ''} onClick={() => setShowPhysics((value) => !value)}><Eye size={14} /> 碰撞</button>
+              <button className={cinematic ? 'active' : ''} aria-label={cinematic ? '退出沉浸构图' : '进入沉浸构图'} onClick={() => setCinematic((value) => !value)}>{cinematic ? <Minimize2 size={14} /> : <Maximize2 size={14} />} 构图</button>
             </div>
           </div>
           <div className="canvas-wrap">
-            <GameCanvas floorIndex={floorIndex} paused={paused} showPhysics={showPhysics} nightVision={nightVision} cameraMode={cameraMode} onFloorChange={changeFloor} onStatus={changeStatus} />
+            <GameCanvas floorIndex={floorIndex} paused={paused} showPhysics={showPhysics} nightVision={nightVision} cameraMode={cameraMode} cinematic={cinematic} onFloorChange={changeFloor} onStatus={changeStatus} />
             <div className="floor-badge"><span>{floor.name}</span><p>{floor.subtitle}</p></div>
             <div className="play-hint"><kbd>WASD</kbd><span>移动 / 楼梯</span><kbd>E</kbd><span>门</span><kbd>Q</kbd><span>物品</span></div>
             <div className="physics-status"><Footprints size={14} /><p>{status}</p></div>

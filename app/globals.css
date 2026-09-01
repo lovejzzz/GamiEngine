@@ -20,6 +20,17 @@ button { color: inherit; font: inherit; }
 button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 
 .studio-shell { min-height: 100vh; background: radial-gradient(circle at 54% 30%, #18242a 0, #070b0e 64%); }
+.studio-shell.cinematic .topbar,
+.studio-shell.cinematic .scene-panel,
+.studio-shell.cinematic .asset-panel { display: none; }
+.studio-shell.cinematic .workspace { height: 100vh; grid-template-columns: minmax(0, 1fr); }
+.studio-shell.cinematic .viewport-panel { height: 100vh; grid-template-rows: 42px minmax(0, 1fr) 0; }
+.studio-shell.cinematic .viewport-toolbar { position: relative; z-index: 8; border-color: rgba(76, 87, 92, .35); background: rgba(4, 8, 11, .94); padding-inline: 20px; }
+.studio-shell.cinematic .viewport-footer { display: none; }
+.studio-shell.cinematic .floor-badge { top: 20px; left: 20px; }
+.studio-shell.cinematic .canvas-wrap::after { background: radial-gradient(ellipse at 53% 45%, transparent 42%, rgba(1,4,8,.28) 74%, rgba(0,2,5,.82) 100%), linear-gradient(180deg, rgba(1,4,8,.28), transparent 17%, transparent 82%, rgba(1,3,6,.42)); mix-blend-mode: multiply; }
+.studio-shell.cinematic .play-hint { bottom: 22px; opacity: .78; }
+.studio-shell.cinematic .physics-status { bottom: 22px; }
 .topbar { height: 64px; border-bottom: 1px solid var(--line); background: rgba(7, 12, 15, .96); display: grid; grid-template-columns: 280px 1fr 280px; align-items: center; padding: 0 18px; box-shadow: 0 12px 30px rgba(0,0,0,.18); }
 .brand-lockup { display: flex; align-items: center; gap: 11px; }
 .brand-mark { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid #415147; background: #17221c; color: var(--green); }

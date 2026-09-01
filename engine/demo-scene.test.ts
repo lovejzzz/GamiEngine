@@ -24,6 +24,27 @@ describe('Gami Engine demo manifest', () => {
     expect(study?.geometry?.independentlyModeledParts).toContain('stairs');
   });
 
+  it('locks the reference-derived camera, material and set-dressing contract', () => {
+    expect(buildingScene.styleLock.contract).toMatchObject({
+      cameraElevationDegrees: 34,
+      cameraAzimuthDegrees: -38,
+      environmentIntensity: 0.22,
+      edgeSoftness: 'beveled',
+    });
+    expect(buildingScene.styleLock.contract?.setPiecesPerRoom[0]).toBeGreaterThanOrEqual(6);
+    for (const id of [
+      'material.plaster.greige.base',
+      'material.plaster.greige.normal',
+      'material.plaster.greige.roughness',
+      'material.brick.soot.base',
+      'material.brick.soot.normal',
+      'material.brick.soot.roughness',
+      'prop.rug.oxblood',
+    ]) {
+      expect(assets.get(id)).toMatchObject({ usage: 'runtime-texture', state: 'ready' });
+    }
+  });
+
   it('resolves every runtime cross-reference', () => {
     for (const floor of buildingScene.floors) {
       for (const room of floor.rooms) expect(assets.has(room.floorAsset)).toBe(true);

@@ -3,7 +3,13 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { createParametricSofa } from './parametric-asset-factory';
 import { buildingScene } from '@/engine/demo-scene';
 import { resolveRuntimeSource } from '@/engine/asset-registry';
@@ -30,6 +36,7 @@ type Props = {
   showPhysics: boolean;
   nightVision: boolean;
   cameraMode: CameraMode;
+  cinematic: boolean;
   onFloorChange: (index: number) => void;
   onStatus: (label: string) => void;
 };
@@ -102,6 +109,7 @@ export function GameCanvas({
   showPhysics,
   nightVision,
   cameraMode,
+  cinematic,
   onFloorChange,
   onStatus,
 }: Props) {
@@ -120,23 +128,48 @@ export function GameCanvas({
     scene.background = new THREE.Color(0x060b10);
     scene.fog = new THREE.FogExp2(0x081016, 0.018);
 
-    const camera = new THREE.PerspectiveCamera(39, 1, 0.05, 60);
-    camera.position.set(0.35, 10.1, 7.8);
+    const camera = new THREE.PerspectiveCamera(cinematic ? 35 : 39, 1, 0.05, 60);
+    camera.position.set(cinematic ? -7.15 : 0.35, cinematic ? 7.2 : 10.1, cinematic ? 8.65 : 7.8);
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.18;
+    renderer.toneMappingExposure = 1.02;
     renderer.domElement.className = 'game-canvas';
     renderer.domElement.tabIndex = 0;
     renderer.domElement.setAttribute('aria-label', 'Gami Engine 3D 房屋演示。WASD 移动，E 开门，Q 互动，沿楼梯行走自动上下楼。');
     mount.appendChild(renderer.domElement);
+    const composer = cinematic ? new EffectComposer(renderer) : null;
+    if (composer) {
+      composer.addPass(new RenderPass(scene, camera));
+      const gtaoPass = new GTAOPass(scene, camera, 640, 360);
+      gtaoPass.updateGtaoMaterial({
+        radius: 0.24,
+        distanceExponent: 1.6,
+        thickness: 0.8,
+        distanceFallOff: 0.7,
+        scale: 0.86,
+        samples: 12,
+      });
+      gtaoPass.updatePdMaterial({
+        lumaPhi: 10,
+        depthPhi: 2,
+        normalPhi: 3,
+        radius: 4,
+        radiusExponent: 1.5,
+        rings: 2,
+        samples: 8,
+      });
+      composer.addPass(gtaoPass);
+      composer.addPass(new UnrealBloomPass(new THREE.Vector2(640, 360), 0.16, 0.42, 0.82));
+      composer.addPass(new OutputPass());
+    }
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     const environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
     scene.environment = environment;
-    scene.environmentIntensity = 0.38;
+    scene.environmentIntensity = buildingScene.styleLock.contract?.environmentIntensity ?? 0.22;
     const interactionPrompt = document.createElement('div');
     interactionPrompt.className = 'interaction-prompt';
     interactionPrompt.hidden = true;
@@ -152,7 +185,7 @@ export function GameCanvas({
     controls.minDistance = 5;
     controls.maxDistance = 18;
     controls.maxPolarAngle = Math.PI * 0.47;
-    controls.target.set(0, 0.4, 0);
+    controls.target.set(cinematic ? -0.35 : 0, cinematic ? 0.48 : 0.4, cinematic ? -0.2 : 0);
 
     const textureLoader = new THREE.TextureLoader();
     const textureSource = (id: string) => resolveRuntimeSource(buildingScene.assets, id, 'runtime-texture');
@@ -183,7 +216,24 @@ export function GameCanvas({
       roughness,
       metalness,
     });
-    const wallMaterial = material(0xeee2cc, textureSource('material.wallpaper.ivory'), 0.94, 0, 1.5, 1.2);
+    const wallMaterial = new THREE.MeshPhysicalMaterial({
+      color: 0x88847c,
+      map: makeTexture(textureSource('material.plaster.greige.base')!, 2.25, 1.65),
+      normalMap: makeTexture(textureSource('material.plaster.greige.normal')!, 2.25, 1.65, 'linear'),
+      normalScale: new THREE.Vector2(0.12, 0.12),
+      roughnessMap: makeTexture(textureSource('material.plaster.greige.roughness')!, 2.25, 1.65, 'linear'),
+      roughness: 0.92,
+      clearcoat: 0.015,
+      clearcoatRoughness: 0.9,
+    });
+    const brickMaterial = new THREE.MeshStandardMaterial({
+      color: 0x756258,
+      map: makeTexture(textureSource('material.brick.soot.base')!, 3.2, 1.7),
+      normalMap: makeTexture(textureSource('material.brick.soot.normal')!, 3.2, 1.7, 'linear'),
+      normalScale: new THREE.Vector2(0.28, 0.28),
+      roughnessMap: makeTexture(textureSource('material.brick.soot.roughness')!, 3.2, 1.7, 'linear'),
+      roughness: 0.94,
+    });
     const wallCapMaterial = material(0x55514a, undefined, 0.88);
     const wainscotMaterial = material(0x8d6d55, textureSource('material.walnut'), 0.8, 0, 2.1, 1.1);
     const walnutMaterial = material(0xb28e72, textureSource('material.walnut'), 0.74, 0, 1.4, 1.4);
@@ -209,6 +259,8 @@ export function GameCanvas({
     const darkMetalMaterial = material(0x182025, undefined, 0.44, 0.72);
     const fabricMaterial = material(0x7b7064, undefined, 0.98);
     const oxbloodMaterial = material(0x542d2f, undefined, 0.94);
+    const curtainMaterial = new THREE.MeshPhysicalMaterial({ color: 0x332927, roughness: 1, sheen: 0.18, sheenColor: new THREE.Color(0x8f654d) });
+    const fireMaterial = new THREE.MeshStandardMaterial({ color: 0xffb15c, emissive: 0xff5b1e, emissiveIntensity: 4.6, roughness: 0.7 });
     const porcelainMaterial = material(0xd1cec3, undefined, 0.24);
     const floorSources: Record<string, string | null> = {
       'floor.herringbone': textureSource('floor.herringbone'),
@@ -243,6 +295,21 @@ export function GameCanvas({
       cast = true,
     ) => {
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), boxMaterial);
+      mesh.position.set(...position);
+      mesh.castShadow = cast;
+      mesh.receiveShadow = true;
+      parent.add(mesh);
+      return mesh;
+    };
+    const addRoundedBox = (
+      parent: THREE.Object3D,
+      size: [number, number, number],
+      position: [number, number, number],
+      boxMaterial: THREE.Material,
+      radius = 0.035,
+      cast = true,
+    ) => {
+      const mesh = new THREE.Mesh(new RoundedBoxGeometry(size[0], size[1], size[2], 4, Math.min(radius, Math.min(...size) * 0.42)), boxMaterial);
       mesh.position.set(...position);
       mesh.castShadow = cast;
       mesh.receiveShadow = true;
@@ -293,7 +360,8 @@ export function GameCanvas({
       const depth = toMeters(wall.height);
       const isSouthCutaway = wall.id.startsWith('outer-s');
       const isOuterSide = wall.id === 'outer-w' || wall.id === 'outer-e';
-      const wallHeight = isSouthCutaway ? 0.34 : isOuterSide ? 1.05 : 1.42;
+      const isInteriorCrossWall = wall.id.includes('-h-');
+      const wallHeight = isSouthCutaway ? 0.34 : wall.id === 'outer-n' ? 2.38 : isOuterSide ? 1.78 : isInteriorCrossWall ? 0.72 : 1.96;
       const wallMesh = new THREE.Mesh(
         new THREE.BoxGeometry(width, wallHeight, depth),
         [wallMaterial, wallMaterial, wallCapMaterial, wallCapMaterial, wallMaterial, wallMaterial],
@@ -302,10 +370,18 @@ export function GameCanvas({
       wallMesh.castShadow = true;
       wallMesh.receiveShadow = true;
       worldRoot.add(wallMesh);
+      if (wall.id === 'outer-n') {
+        addBox(worldRoot, [width + 0.05, wallHeight - 0.04, 0.035], [center.x, wallHeight / 2, center.z - depth / 2 - 0.018], brickMaterial);
+      }
+      if (wall.id === 'outer-w' || wall.id === 'outer-e') {
+        const side = wall.id === 'outer-w' ? -1 : 1;
+        addBox(worldRoot, [0.035, wallHeight - 0.04, depth + 0.05], [center.x + side * (width / 2 + 0.018), wallHeight / 2, center.z], brickMaterial);
+      }
       if (!isSouthCutaway) {
-        const wainscotHeight = Math.min(0.38, wallHeight * 0.42);
+        const wainscotHeight = Math.min(0.68, wallHeight * 0.42);
         addBox(worldRoot, [width + 0.018, wainscotHeight, depth + 0.018], [center.x, wainscotHeight / 2 + 0.01, center.z], wainscotMaterial);
         addBox(worldRoot, [width + 0.035, 0.055, depth + 0.035], [center.x, wainscotHeight + 0.04, center.z], brassMaterial, false);
+        addBox(worldRoot, [width + 0.025, 0.055, depth + 0.025], [center.x, wallHeight - 0.1, center.z], wallCapMaterial, false);
       }
       addColliderOutline(wall, wallHeight + 0.07);
     }
@@ -321,16 +397,29 @@ export function GameCanvas({
     for (const room of floor.rooms.filter((item) => item.y < 80 && item.width > 175 && item.purpose !== 'storage')) {
       const windowPoint = toWorld({ x: room.x + room.width * 0.52, y: 61 });
       const window = new THREE.Group();
-      window.position.set(windowPoint.x, 0.91, windowPoint.z + 0.13);
-      const pane = new THREE.Mesh(new THREE.PlaneGeometry(0.92, 0.78), coolGlassMaterial);
+      window.position.set(windowPoint.x, 1.34, windowPoint.z + 0.13);
+      const pane = new THREE.Mesh(new THREE.PlaneGeometry(0.92, 0.92), coolGlassMaterial);
       pane.receiveShadow = true;
       window.add(pane);
-      addBox(window, [1.03, 0.065, 0.065], [0, 0.42, 0.025], darkMetalMaterial, false);
-      addBox(window, [1.03, 0.065, 0.065], [0, -0.42, 0.025], darkMetalMaterial, false);
-      addBox(window, [0.065, 0.9, 0.065], [-0.5, 0, 0.025], darkMetalMaterial, false);
-      addBox(window, [0.065, 0.9, 0.065], [0.5, 0, 0.025], darkMetalMaterial, false);
-      addBox(window, [0.045, 0.82, 0.05], [0, 0, 0.04], darkMetalMaterial, false);
+      addBox(window, [1.03, 0.065, 0.065], [0, 0.49, 0.025], darkMetalMaterial, false);
+      addBox(window, [1.03, 0.065, 0.065], [0, -0.49, 0.025], darkMetalMaterial, false);
+      addBox(window, [0.065, 1.04, 0.065], [-0.5, 0, 0.025], darkMetalMaterial, false);
+      addBox(window, [0.065, 1.04, 0.065], [0.5, 0, 0.025], darkMetalMaterial, false);
+      addBox(window, [0.045, 0.96, 0.05], [0, 0, 0.04], darkMetalMaterial, false);
       addBox(window, [0.96, 0.045, 0.05], [0, 0, 0.04], darkMetalMaterial, false);
+      const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 1.36, 12), brassMaterial);
+      rod.rotation.z = Math.PI / 2;
+      rod.position.set(0, 0.61, 0.1);
+      window.add(rod);
+      for (const side of [-1, 1]) {
+        const curtain = addRoundedBox(window, [0.23, 1.24, 0.075], [side * 0.58, -0.02, 0.12], curtainMaterial, 0.025, false);
+        curtain.rotation.z = side * 0.035;
+        for (const fold of [-0.07, 0, 0.07]) addBox(curtain, [0.018, 1.12, 0.025], [fold, 0, 0.045], material(0x171315, undefined, 1), false);
+      }
+      const radiator = new THREE.Group();
+      radiator.position.set(0, -0.76, 0.08);
+      for (let rib = -4; rib <= 4; rib += 1) addRoundedBox(radiator, [0.07, 0.32, 0.12], [rib * 0.095, 0, 0], material(0x77746c, undefined, 0.84, 0.12), 0.025, false);
+      window.add(radiator);
       worldRoot.add(window);
     }
 
@@ -355,12 +444,12 @@ export function GameCanvas({
       group.position.copy(hinge);
       group.rotation.y = -door.angle;
       const length = toMeters(door.length);
-      addBox(group, [length, 1.58, 0.105], [length / 2, 0.79, 0], doorLeafMaterial);
-      for (const y of [0.45, 1.11]) {
-        addBox(group, [length * 0.68, 0.42, 0.035], [length * 0.51, y, 0.07], wainscotMaterial, false);
+      addBox(group, [length, 2.02, 0.105], [length / 2, 1.01, 0], doorLeafMaterial);
+      for (const y of [0.56, 1.43]) {
+        addBox(group, [length * 0.68, 0.55, 0.035], [length * 0.51, y, 0.07], wainscotMaterial, false);
       }
-      addBox(group, [0.045, 0.045, 0.12], [length - 0.13, 0.86, 0], brassMaterial);
-      addBox(group, [0.07, 1.64, 0.13], [0, 0.82, 0], wainscotMaterial);
+      addBox(group, [0.045, 0.045, 0.12], [length - 0.13, 1.02, 0], brassMaterial);
+      addBox(group, [0.07, 2.08, 0.13], [0, 1.04, 0], wainscotMaterial);
       worldRoot.add(group);
       doorGroups.set(door.id, group);
     }
@@ -405,6 +494,17 @@ export function GameCanvas({
       addBox(group, [0.15, 0.72, 0.15], [width * 0.28, 0.38, -depth * 0.22], walnutMaterial);
       addBox(group, [0.15, 0.72, 0.15], [-width * 0.28, 0.38, depth * 0.22], walnutMaterial);
       addBox(group, [0.15, 0.72, 0.15], [width * 0.28, 0.38, depth * 0.22], walnutMaterial);
+      for (const side of [-1, 1]) {
+        const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.018, 24), porcelainMaterial);
+        plate.position.set(side * width * 0.22, 0.855, 0);
+        group.add(plate);
+        const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.035, 0.12, 16), new THREE.MeshPhysicalMaterial({ color: 0xa9bfca, transmission: 0.35, transparent: true, opacity: 0.52, roughness: 0.18 }));
+        glass.position.set(side * width * 0.22, 0.92, -depth * 0.19);
+        group.add(glass);
+      }
+      const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.12, 0.1, 24), brassMaterial);
+      bowl.position.set(0, 0.9, 0);
+      group.add(bowl);
       return group;
     };
 
@@ -412,8 +512,9 @@ export function GameCanvas({
       const group = new THREE.Group();
       const width = toMeters(prop.size.x);
       const depth = toMeters(prop.size.y);
-      addBox(group, [width * 0.82, 0.12, depth * 0.82], [0, 0.48, 0], walnutMaterial);
-      addBox(group, [width * 0.82, 0.72, 0.1], [0, 0.78, -depth * 0.38], walnutMaterial);
+      addRoundedBox(group, [width * 0.82, 0.12, depth * 0.82], [0, 0.48, 0], walnutMaterial, 0.035);
+      addRoundedBox(group, [width * 0.82, 0.72, 0.1], [0, 0.78, -depth * 0.38], walnutMaterial, 0.03);
+      addRoundedBox(group, [width * 0.66, 0.28, 0.115], [0, 0.86, -depth * 0.31], upholsteryMaterial, 0.06);
       for (const x of [-1, 1]) for (const z of [-1, 1]) {
         addBox(group, [0.07, 0.46, 0.07], [x * width * 0.34, 0.23, z * depth * 0.34], walnutMaterial);
       }
@@ -457,6 +558,28 @@ export function GameCanvas({
       addBox(group, [width * 0.28, 0.88, depth * 0.75], [-width * 0.34, 0.44, depth * 0.04], sageMaterial);
       addBox(group, [width * 0.96, 0.1, depth * 0.34], [0.02, 0.93, -depth * 0.34], darkMetalMaterial);
       addBox(group, [width * 0.32, 0.1, depth * 0.78], [-width * 0.34, 0.93, depth * 0.04], darkMetalMaterial);
+      const tileMaterial = material(0xc8bca8, undefined, 0.7);
+      addBox(group, [width * 0.88, 0.55, 0.035], [width * 0.04, 1.28, -depth * 0.5], tileMaterial, false);
+      for (let seam = -4; seam <= 4; seam += 1) addBox(group, [0.012, 0.52, 0.012], [seam * width * 0.1, 1.28, -depth * 0.515], darkMetalMaterial, false);
+      for (let seam = -1; seam <= 1; seam += 1) addBox(group, [width * 0.86, 0.012, 0.012], [width * 0.04, 1.28 + seam * 0.18, -depth * 0.515], darkMetalMaterial, false);
+      for (const x of [-0.28, 0.12, 0.34]) {
+        addRoundedBox(group, [width * 0.2, 0.56, 0.25], [width * x, 1.57, -depth * 0.39], sageMaterial, 0.025);
+        addBox(group, [0.025, 0.25, 0.04], [width * x + width * 0.07, 1.57, -depth * 0.245], brassMaterial, false);
+      }
+      const sink = new THREE.Mesh(new THREE.BoxGeometry(width * 0.25, 0.055, depth * 0.19), darkMetalMaterial);
+      sink.position.set(width * 0.05, 0.995, -depth * 0.34);
+      group.add(sink);
+      const faucet = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.018, 10, 20, Math.PI), brassMaterial);
+      faucet.rotation.x = Math.PI / 2;
+      faucet.position.set(width * 0.05, 1.13, -depth * 0.41);
+      group.add(faucet);
+      for (const x of [width * 0.25, width * 0.36]) for (const z of [-depth * 0.39, -depth * 0.28]) {
+        const burner = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.012, 8, 20), darkMetalMaterial);
+        burner.rotation.x = Math.PI / 2;
+        burner.position.set(x, 0.995, z);
+        group.add(burner);
+      }
+      for (let panel = -2; panel <= 2; panel += 1) addBox(group, [width * 0.16, 0.54, 0.025], [panel * width * 0.17, 0.49, -depth * 0.505], wainscotMaterial, false);
       for (const part of prop.parts ?? []) {
         const local = new THREE.Vector3(
           toMeters(part.position.x - prop.position.x),
@@ -467,7 +590,8 @@ export function GameCanvas({
         if (part.interaction.motion === 'hinge') {
           const hinge = new THREE.Group();
           hinge.position.set(local.x, 0.48, local.z);
-          addBox(hinge, [0.34, 0.58, 0.055], [0.17, 0, 0], sageMaterial);
+          addRoundedBox(hinge, [0.34, 0.58, 0.055], [0.17, 0, 0], sageMaterial, 0.018);
+          addBox(hinge, [0.24, 0.43, 0.024], [0.17, 0, 0.036], wainscotMaterial, false);
           addBox(hinge, [0.035, 0.035, 0.075], [0.29, 0, 0.02], brassMaterial);
           group.add(hinge);
           propParts.set(id, hinge);
@@ -548,9 +672,14 @@ export function GameCanvas({
     }
 
     const addRoomDetails = () => {
-      const rugMaterial = (color: number) => material(color, textureSource('floor.carpet'), 1, 0, 1.4, 1.4);
-      const addRug = (x: number, z: number, width: number, depth: number, color: number) => {
-        const rug = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), rugMaterial(color));
+      const rugTexture = textureLoader.load(textureSource('prop.rug.oxblood')!);
+      rugTexture.colorSpace = THREE.SRGBColorSpace;
+      rugTexture.wrapS = THREE.ClampToEdgeWrapping;
+      rugTexture.wrapT = THREE.ClampToEdgeWrapping;
+      rugTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      const rugSurface = new THREE.MeshStandardMaterial({ map: rugTexture, color: 0xc4a59a, transparent: true, alphaTest: 0.035, roughness: 1, side: THREE.DoubleSide });
+      const addRug = (x: number, z: number, width: number, depth: number) => {
+        const rug = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), rugSurface);
         rug.rotation.x = -Math.PI / 2;
         rug.position.set(x, 0.016, z);
         rug.receiveShadow = true;
@@ -571,6 +700,58 @@ export function GameCanvas({
         );
         shade.position.set(x, 0.48, z);
         worldRoot.add(shade);
+      };
+      const addBookcase = (x: number, z: number, rotationY = 0, width = 0.92) => {
+        const group = new THREE.Group();
+        group.position.set(x, 0, z);
+        group.rotation.y = rotationY;
+        addRoundedBox(group, [width, 1.42, 0.24], [0, 0.71, 0], walnutMaterial, 0.025);
+        addBox(group, [width * 0.86, 1.26, 0.08], [0, 0.7, -0.1], material(0x241b18, undefined, 0.9), false);
+        for (const shelfY of [0.25, 0.56, 0.87, 1.18]) {
+          addBox(group, [width * 0.9, 0.045, 0.28], [0, shelfY, 0.02], walnutMaterial);
+          for (let book = 0; book < 7; book += 1) {
+            const colors = [0x4c302d, 0x2d4740, 0x6c5738, 0x273744, 0x716047];
+            const bookWidth = 0.045 + (book % 3) * 0.008;
+            addBox(group, [bookWidth, 0.16 + (book % 2) * 0.035, 0.13], [-width * 0.34 + book * width * 0.105, shelfY + 0.1, -0.01], material(colors[book % colors.length], undefined, 0.92), false);
+          }
+        }
+        worldRoot.add(group);
+      };
+      const addPlant = (x: number, z: number) => {
+        const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.14, 0.32, 18), material(0x584133, undefined, 0.92));
+        pot.position.set(x, 0.16, z);
+        worldRoot.add(pot);
+        for (let leaf = 0; leaf < 8; leaf += 1) {
+          const blade = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 8), material(0x314d34 + (leaf % 2) * 0x081108, undefined, 0.96));
+          const angle = leaf / 8 * Math.PI * 2;
+          blade.scale.set(0.58, 1.75, 0.35);
+          blade.rotation.z = Math.sin(angle) * 0.65;
+          blade.position.set(x + Math.cos(angle) * 0.16, 0.45 + (leaf % 3) * 0.08, z + Math.sin(angle) * 0.16);
+          worldRoot.add(blade);
+        }
+      };
+      const addFireplace = () => {
+        const point = toWorld({ x: 556, y: 87 });
+        const group = new THREE.Group();
+        group.position.set(point.x, 0, point.z);
+        group.rotation.y = Math.PI;
+        addRoundedBox(group, [1.15, 1.16, 0.3], [0, 0.58, 0], walnutMaterial, 0.035);
+        addBox(group, [0.72, 0.7, 0.33], [0, 0.39, -0.03], material(0x100d0c, undefined, 0.96), false);
+        addRoundedBox(group, [0.22, 0.92, 0.39], [-0.52, 0.49, 0], walnutMaterial, 0.025);
+        addRoundedBox(group, [0.22, 0.92, 0.39], [0.52, 0.49, 0], walnutMaterial, 0.025);
+        addRoundedBox(group, [1.38, 0.16, 0.48], [0, 1.18, 0], walnutMaterial, 0.035);
+        addBox(group, [0.58, 0.055, 0.18], [0, 0.18, -0.19], fireMaterial, false);
+        for (const x of [-0.2, 0, 0.2]) {
+          const log = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.5, 10), material(0x42261b, undefined, 1));
+          log.rotation.z = Math.PI / 2;
+          log.rotation.y = x * 1.8;
+          log.position.set(x * 0.6, 0.13, -0.22);
+          group.add(log);
+        }
+        const fireLight = new THREE.PointLight(0xff6d2a, 4.8, 2.8, 2);
+        fireLight.position.set(0, 0.42, -0.52);
+        group.add(fireLight);
+        worldRoot.add(group);
       };
       for (const room of floor.rooms) {
         const center = toWorld({ x: room.x + room.width / 2, y: room.y + room.height / 2 });
@@ -606,25 +787,33 @@ export function GameCanvas({
           }
         }
         if (room.purpose === 'entry') {
-          addRug(center.x, center.z + depth * 0.18, width * 0.55, depth * 0.35, 0x4f302f);
+          addRug(center.x, center.z + depth * 0.18, width * 0.55, depth * 0.35);
           addWallArt(center.x, center.z - depth / 2 + 0.18, 0.54, 0x4b5b51);
+          addRoundedBox(worldRoot, [width * 0.68, 0.72, 0.28], [center.x, 0.36, center.z - depth * 0.38], walnutMaterial, 0.025);
+          for (const hook of [-0.28, 0, 0.28]) addBox(worldRoot, [0.025, 0.38, 0.025], [center.x + hook, 1.12, center.z - depth * 0.43], brassMaterial, false);
         }
         if (room.purpose === 'living') {
-          addRug(center.x + width * 0.05, center.z + depth * 0.18, width * 0.64, depth * 0.42, 0x4b302f);
+          addRug(center.x + width * 0.05, center.z + depth * 0.18, width * 0.64, depth * 0.42);
           addWallArt(center.x + width * 0.22, center.z - depth / 2 + 0.18, 0.74, 0x6c5140);
           addTableLamp(center.x + width * 0.38, center.z - depth * 0.22);
+          if (floor.id === 'f1') {
+            addFireplace();
+            addBookcase(center.x - width * 0.37, center.z + depth * 0.35, Math.PI / 2, 0.82);
+            addPlant(center.x + width * 0.38, center.z + depth * 0.28);
+          }
         }
         if (room.purpose === 'bedroom') {
-          addRug(center.x, center.z + depth * 0.22, width * 0.58, depth * 0.32, 0x4b3437);
+          addRug(center.x, center.z + depth * 0.22, width * 0.58, depth * 0.32);
           addWallArt(center.x + width * 0.28, center.z - depth / 2 + 0.18, 0.5, 0x475764);
           addTableLamp(center.x + width * 0.34, center.z - depth * 0.16);
         }
         if (room.purpose === 'dining') {
-          addRug(center.x + width * 0.08, center.z, width * 0.62, depth * 0.62, 0x403331);
+          addRug(center.x + width * 0.08, center.z, width * 0.62, depth * 0.62);
           addWallArt(center.x + width * 0.28, center.z - depth / 2 + 0.18, 0.68, 0x66533f);
+          addBookcase(center.x + width * 0.43, center.z - depth * 0.3, Math.PI / 2, 0.72);
         }
         if (room.purpose === 'studio') {
-          addRug(center.x - width * 0.12, center.z, width * 0.48, depth * 0.38, 0x35424a);
+          addRug(center.x - width * 0.12, center.z, width * 0.48, depth * 0.38);
           addWallArt(center.x + width * 0.25, center.z - depth / 2 + 0.18, 0.82, 0x5b493b);
         }
       }
@@ -637,15 +826,19 @@ export function GameCanvas({
       root.add(visual);
       const cloth = kind === 'operator' ? tacticalMaterial : material(tint, undefined, 0.92);
       const trouser = kind === 'operator' ? tacticalMaterial : material(0x4b504d, undefined, 0.95);
-      const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.31, 7, 14), cloth);
-      torso.scale.set(0.95, 1, 0.68);
+      const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.165, 0.38, 7, 14), cloth);
+      torso.scale.set(1.06, 1, 0.72);
       torso.position.y = 1.14;
       visual.add(torso);
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 20, 16), material(0xb18d70, undefined, 0.92));
-      head.position.y = 1.53;
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.075, 0.12, 12), material(0xa78369, undefined, 0.93));
+      neck.position.y = 1.47;
+      visual.add(neck);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 20, 16), material(0xb18d70, undefined, 0.92));
+      head.scale.set(0.88, 1.08, 0.94);
+      head.position.y = 1.61;
       visual.add(head);
-      const hair = new THREE.Mesh(new THREE.SphereGeometry(0.153, 20, 8, 0, Math.PI * 2, 0, Math.PI * 0.48), material(kind === 'operator' ? 0x252b28 : 0x40372f, undefined, 0.92));
-      hair.position.y = 1.545;
+      const hair = new THREE.Mesh(new THREE.SphereGeometry(0.133, 20, 8, 0, Math.PI * 2, 0, Math.PI * 0.48), material(kind === 'operator' ? 0x252b28 : 0x40372f, undefined, 0.92));
+      hair.position.y = 1.625;
       visual.add(hair);
 
       const createJointedLimb = (
@@ -670,13 +863,25 @@ export function GameCanvas({
         visual.add(upper);
         return { upper, lower };
       };
-      const leftArmRig = createJointedLimb(-0.25, 1.31, cloth, 0.27, 0.25, 0.06);
-      const rightArmRig = createJointedLimb(0.25, 1.31, cloth, 0.27, 0.25, 0.06);
-      const leftLegRig = createJointedLimb(-0.1, 0.91, trouser, 0.34, 0.34, 0.068);
-      const rightLegRig = createJointedLimb(0.1, 0.91, trouser, 0.34, 0.34, 0.068);
+      const leftArmRig = createJointedLimb(-0.215, 1.34, cloth, 0.29, 0.27, 0.052);
+      const rightArmRig = createJointedLimb(0.215, 1.34, cloth, 0.29, 0.27, 0.052);
+      const leftLegRig = createJointedLimb(-0.09, 0.91, trouser, 0.36, 0.36, 0.062);
+      const rightLegRig = createJointedLimb(0.09, 0.91, trouser, 0.36, 0.36, 0.062);
+      for (const [side, arm] of [[-1, leftArmRig], [1, rightArmRig]] as const) {
+        addRoundedBox(arm.lower, [0.085, 0.1, 0.07], [0, -0.29, 0], material(0xaa8569, undefined, 0.94), 0.03);
+        arm.upper.rotation.z = side * -0.035;
+      }
+      for (const leg of [leftLegRig, rightLegRig]) addRoundedBox(leg.lower, [0.115, 0.095, 0.25], [0, -0.38, 0.07], darkMetalMaterial, 0.03);
       if (kind === 'operator') {
-        addBox(visual, [0.42, 0.34, 0.12], [0, 1.12, 0.16], darkMetalMaterial);
-        addBox(visual, [0.09, 0.92, 0.09], [0.23, 1.08, 0.22], darkMetalMaterial);
+        addRoundedBox(visual, [0.39, 0.38, 0.13], [0, 1.16, 0.15], darkMetalMaterial, 0.025);
+        addRoundedBox(visual, [0.29, 0.38, 0.15], [0, 1.18, -0.16], tacticalMaterial, 0.04);
+        const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.15, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.57), tacticalMaterial);
+        helmet.scale.set(1, 0.72, 1.05);
+        helmet.position.set(0, 1.66, 0);
+        visual.add(helmet);
+        const rifle = addRoundedBox(visual, [0.075, 0.82, 0.075], [0.19, 1.08, 0.19], darkMetalMaterial, 0.018);
+        rifle.rotation.z = -0.13;
+        rifle.rotation.x = -0.18;
       }
       root.traverse((object) => {
         if (object instanceof THREE.Mesh) {
@@ -758,12 +963,12 @@ export function GameCanvas({
       residentRigs.push({ rig, spec: occupant, state: actorState, phase: index * 1.7, moving: false, colliderOutline });
     });
 
-    const ambient = new THREE.AmbientLight(0x71808a, 0.92);
+    const ambient = new THREE.AmbientLight(0x6d7880, 0.34);
     scene.add(ambient);
-    const hemi = new THREE.HemisphereLight(0x8fa5b7, 0x2b1c15, 1.08);
+    const hemi = new THREE.HemisphereLight(0x718aa1, 0x241813, 0.48);
     scene.add(hemi);
-    const moon = new THREE.DirectionalLight(0xa7c2df, 2.25);
-    moon.position.set(-5, 9, 4);
+    const moon = new THREE.DirectionalLight(0x9cb8d4, 1.48);
+    moon.position.set(-6, 8, 4);
     moon.castShadow = true;
     moon.shadow.mapSize.set(2048, 2048);
     moon.shadow.camera.left = -8;
@@ -772,7 +977,7 @@ export function GameCanvas({
     moon.shadow.camera.bottom = -7;
     scene.add(moon);
     const flashlightTarget = new THREE.Object3D();
-    const flashlight = new THREE.SpotLight(0xe5e1d3, 10.5, 9.2, 0.42, 0.98, 1.9);
+    const flashlight = new THREE.SpotLight(0xe5e1d3, 7.8, 8.4, 0.36, 0.92, 1.9);
     flashlight.castShadow = true;
     flashlight.shadow.mapSize.set(1024, 1024);
     flashlight.shadow.camera.near = 0.2;
@@ -780,14 +985,21 @@ export function GameCanvas({
     flashlight.shadow.radius = 3;
     flashlight.target = flashlightTarget;
     scene.add(flashlight, flashlightTarget);
+    let shadowLightCount = 0;
     for (const light of floor.lights) {
       if (!light.enabled) continue;
       const position = toWorld(light.position);
-      const point = new THREE.PointLight(0xffad68, light.intensity * 12, toMeters(light.radius) * 2.7, 1.8);
-      point.position.set(position.x, 1.92, position.z);
-      // Point-light shadows render six shadow views each. The directional moon
-      // and player spotlight own dynamic shadows; room bulbs provide fill only.
-      point.castShadow = false;
+      const point = new THREE.PointLight(0xff9b55, light.intensity * 14, toMeters(light.radius) * 2.25, 1.9);
+      point.position.set(position.x, 2.22, position.z);
+      point.castShadow = cinematic && shadowLightCount < 2;
+      if (point.castShadow) {
+        point.shadow.mapSize.set(512, 512);
+        point.shadow.camera.near = 0.12;
+        point.shadow.camera.far = toMeters(light.radius) * 2.25;
+        point.shadow.bias = -0.0015;
+        point.shadow.radius = 2;
+        shadowLightCount += 1;
+      }
       scene.add(point);
       const bulb = new THREE.Mesh(
         new THREE.SphereGeometry(0.075, 16, 12),
@@ -795,7 +1007,13 @@ export function GameCanvas({
       );
       bulb.position.copy(point.position);
       scene.add(bulb);
-      addBox(worldRoot, [0.035, 0.38, 0.035], [position.x, 2.16, position.z], darkMetalMaterial, false);
+      addBox(worldRoot, [0.035, 0.38, 0.035], [position.x, 2.6, position.z], darkMetalMaterial, false);
+      const shade = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.28, 0.22, 24, 1, true),
+        new THREE.MeshStandardMaterial({ color: 0x221b18, emissive: 0x5b2f16, emissiveIntensity: 0.28, roughness: 0.94, side: THREE.DoubleSide }),
+      );
+      shade.position.set(position.x, 2.34, position.z);
+      scene.add(shade);
     }
 
     let transitioningFloor = false;
@@ -984,6 +1202,7 @@ export function GameCanvas({
       const width = Math.max(1, mount.clientWidth);
       const height = Math.max(1, mount.clientHeight);
       renderer.setSize(width, height, false);
+      composer?.setSize(width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
     };
@@ -1174,7 +1393,7 @@ export function GameCanvas({
       const forward = new THREE.Vector3(Math.sin(player.facing), 0, Math.cos(player.facing));
       flashlight.position.copy(playerRig.root.position).add(new THREE.Vector3(0, 1.42, 0));
       flashlightTarget.position.copy(playerRig.root.position).addScaledVector(forward, 4.6).add(new THREE.Vector3(0, 0.52, 0));
-      flashlight.intensity = state.nightVision ? 3.5 : 10.5;
+      flashlight.intensity = state.nightVision ? 3.2 : 7.8;
 
       const focusedInteraction = getInteractionCandidate();
       interactionMarker.visible = Boolean(focusedInteraction);
@@ -1206,6 +1425,7 @@ export function GameCanvas({
       renderer.domElement.dataset.floor = floor.id;
       renderer.domElement.dataset.moving = String(player.moving);
       renderer.domElement.dataset.camera = state.cameraMode;
+      renderer.domElement.dataset.cinematic = String(cinematic);
       renderer.domElement.dataset.renderer = 'three-webgl';
       renderer.domElement.dataset.interactions = JSON.stringify({ ...memory.props, ...memory.parts });
       renderer.domElement.dataset.doors = JSON.stringify(Object.fromEntries(
@@ -1222,7 +1442,8 @@ export function GameCanvas({
           moving: resident.moving,
         }]),
       ));
-      renderer.render(scene, camera);
+      if (composer) composer.render();
+      else renderer.render(scene, camera);
       frameRequest = requestAnimationFrame(render);
     };
     frameRequest = requestAnimationFrame(render);
@@ -1254,12 +1475,13 @@ export function GameCanvas({
       });
       environment.dispose();
       pmremGenerator.dispose();
+      composer?.dispose();
       renderer.dispose();
       renderer.domElement.remove();
       interactionPrompt.remove();
       floorTransition.remove();
     };
-  }, [floorIndex]);
+  }, [cinematic, floorIndex]);
 
   return <div ref={mountRef} className="game-viewport" />;
 }

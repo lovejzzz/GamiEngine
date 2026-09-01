@@ -217,6 +217,15 @@ export type BuildingScene = {
     lighting: string;
     palette: string;
     negative: string;
+    contract?: {
+      cameraElevationDegrees: number;
+      cameraAzimuthDegrees: number;
+      environmentIntensity: number;
+      warmLightsPerRoom: [number, number];
+      setPiecesPerRoom: [number, number];
+      edgeSoftness: 'beveled' | 'mixed' | 'sharp';
+      materialFamilies: string[];
+    };
   };
   floors: FloorSpec[];
   assets: AssetRecipe[];
