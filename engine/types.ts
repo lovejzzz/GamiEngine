@@ -5,7 +5,32 @@ export type AssetKind =
   | 'wall-face'
   | 'door-face'
   | 'prop'
-  | 'character';
+  | 'character'
+  | 'material';
+
+export type InteractionAction =
+  | 'inspect'
+  | 'open'
+  | 'search'
+  | 'push'
+  | 'move'
+  | 'hide'
+  | 'traverse';
+
+export type InteractionState = {
+  id: string;
+  label: string;
+  asset?: string;
+};
+
+export type InteractionProfile = {
+  prompt: string;
+  actions: InteractionAction[];
+  defaultState: string;
+  states: InteractionState[];
+  motion: 'none' | 'swap' | 'translate' | 'hinge' | 'portal';
+  exclusiveGroup?: string;
+};
 
 export type AssetRecipe = {
   id: string;
@@ -14,6 +39,7 @@ export type AssetRecipe = {
   description: string;
   prompt: string;
   source?: string;
+  usage?: 'runtime-texture' | 'reference-study' | 'runtime-sprite';
   state: 'ready' | 'recipe';
   side?: 'front' | 'back' | 'top';
   physicalSize: Vec2;
@@ -29,6 +55,24 @@ export type AssetRecipe = {
     occlusion: number;
     friction: number;
   };
+  texture?: {
+    semantic: 'base-color' | 'normal' | 'roughness' | 'metalness' | 'emissive';
+    tileable: boolean;
+    colorSpace: 'srgb' | 'linear';
+    metersPerTile: Vec2;
+  };
+  referenceStudy?: {
+    source: string;
+    learn: Array<'silhouette' | 'proportion' | 'material-zones' | 'wear-language' | 'color-palette'>;
+    runtimeRule: 'never-render-directly';
+  };
+  geometry?: {
+    source: 'procedural' | 'gltf';
+    primitiveFamily?: string;
+    meshSource?: string;
+    independentlyModeledParts?: string[];
+  };
+  interaction?: InteractionProfile;
 };
 
 export type RectSpec = {
@@ -78,6 +122,25 @@ export type LightSpec = {
   enabled: boolean;
 };
 
+export type PropPartSpec = {
+  id: string;
+  name: string;
+  position: Vec2;
+  interaction: InteractionProfile;
+};
+
+export type PropSpec = {
+  id: string;
+  name: string;
+  asset: string;
+  position: Vec2;
+  size: Vec2;
+  rotation?: number;
+  collider?: { width: number; height: number };
+  interaction?: InteractionProfile;
+  parts?: PropPartSpec[];
+};
+
 export type FloorSpec = {
   id: string;
   index: number;
@@ -87,15 +150,22 @@ export type FloorSpec = {
   walls: RectSpec[];
   doors: DoorSpec[];
   occupants: OccupantSpec[];
+  props: PropSpec[];
   lights: LightSpec[];
   stairs: RectSpec & { toUp?: string; toDown?: string };
   spawn: Vec2;
 };
 
 export type BuildingScene = {
-  version: 1;
+  version: 2;
   name: string;
   world: { width: number; height: number; pixelsPerMeter: number };
+  renderer: {
+    mode: '3d';
+    engine: 'three';
+    floorStreaming: boolean;
+    defaultCamera: 'editor' | 'follow';
+  };
   styleLock: {
     id: string;
     projection: string;

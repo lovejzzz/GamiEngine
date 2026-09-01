@@ -3,6 +3,7 @@ export const runtime = 'edge';
 type GenerateRequest = {
   assetId?: string;
   kind?: string;
+  usage?: 'runtime-texture' | 'reference-study' | 'runtime-sprite';
   prompt?: string;
   styleLock?: {
     projection?: string;
@@ -25,14 +26,20 @@ export async function POST(request: Request) {
     return Response.json({ message: '资产 prompt 缺失或过长。' }, { status: 400 });
   }
   const lock = body.styleLock ?? {};
+  const workflowRule = body.usage === 'runtime-texture'
+    ? 'Create one seamless, edge-to-edge material surface scan with neutral diffuse lighting. No object silhouette, folds, perspective, hardware, cast shadow, text, or scene context.'
+    : body.usage === 'reference-study'
+      ? 'Create one coherent 3D object design reference that clearly teaches silhouette, proportions, construction, material zones, palette, and wear. Keep all independently interactive doors, drawers, lids, cushions, or loose pieces visually separable. This is a modeling reference, never a runtime sprite.'
+      : 'Create one isolated reusable sprite or atlas exactly matching the requested frame layout and alpha requirements.';
   const prompt = [
     `Game asset id: ${body.assetId ?? 'unnamed'}. Type: ${body.kind ?? 'asset'}.`,
+    `Pipeline usage: ${body.usage ?? 'unspecified'}.`,
     body.prompt,
     `Projection: ${lock.projection ?? 'strict orthographic top-down'}.`,
     `Lighting: ${lock.lighting ?? 'neutral diffuse light'}.`,
     `Palette: ${lock.palette ?? 'natural restrained palette'}.`,
     `Must avoid: ${lock.negative ?? 'text, watermark, scene context'}.`,
-    'Return exactly one isolated production-ready game asset. Keep scale and camera rules exact.',
+    workflowRule,
   ].join('\n');
   const response = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',

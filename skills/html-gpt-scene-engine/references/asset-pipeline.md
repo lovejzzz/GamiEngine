@@ -24,6 +24,31 @@ Use a visual master as an input reference for related character frames and two-s
 - Prop: isolated alpha, strict overhead view, no cast shadow, physical size and pivot recorded.
 - Character: approve one master, then derive directional atlas or layered rig. Keep name/role labels outside the image.
 
+## 3D image roles
+
+Do not send every generated image straight to the renderer. Assign one role first:
+
+- `reference-study`: an object-design image used to extract silhouette, proportions, construction, material zones, palette, and wear. It may show the whole object, but it must never become a plane or object texture at runtime.
+- `runtime-texture`: a seamless, neutral-lit surface map applied to UV-authored geometry. It must contain no whole-object silhouette, perspective, handles, hinges, cast shadows, or movable seams.
+- `runtime-sprite`: an intentionally 2D character/FX atlas or fallback with declared projection, alpha, frame layout, pivot, and world footprint.
+
+For a reference study, annotate which visible pieces must become separate meshes before modeling. For a cabinet this usually means carcass, worktop, every usable door leaf, every usable drawer box/front, handle, and hinge/slide anchor. Preserve these IDs in interaction and save data.
+
+## Interaction-first asset coverage
+
+Before making a prop image, write its capability and state matrix:
+
+| Capability | Minimum reusable assets |
+| --- | --- |
+| Static / inspect | One approved base image |
+| Push / move | One isolated image; transform and collision remain runtime data |
+| Open / search | Closed/base plus every visually distinct opened or revealed state |
+| Hinged subparts | Carcass/base plus each reusable leaf/front; animate each child hinge independently |
+| Break / damage | Intact, transition/debris if visible, and damaged/destroyed states |
+| Character movement | Approved master plus real directional walk frames and required action clips |
+
+Do not use an “all doors open” image as the state of a cabinet with several independently usable doors. It may be kept as a rejected contact-sheet reference, but runtime assets must support one-child-at-a-time state changes.
+
 ## Character animation choices
 
 Use an atlas when the renderer is sprite-based and action count is bounded. Use a layered 2D rig when many motions, equipment swaps, or aim directions would cause atlas explosion.
@@ -46,4 +71,4 @@ This verifies PNG structure, dimensions, color type, alpha support, and reports 
 
 ## Integration
 
-Register final files in the asset manifest. Renderer code should resolve by asset ID and provide a procedural or neutral missing-asset fallback. Never expose an API key to the browser: generation requests go through a server endpoint, and returned files should move into durable project or object storage before being treated as ready.
+Register final files in the asset manifest. Renderer code should resolve by asset ID and provide a procedural or neutral missing-asset fallback. The asset resolver must refuse `reference-study` as a runtime map. Never expose an API key to the browser: generation requests go through a server endpoint, and returned files should move into durable project or object storage before being treated as ready.

@@ -13,17 +13,17 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'FRAME — GPT Scene Engine',
-  description: '为 GPT 分件生成资产设计的 HTML 游戏场景引擎。',
+  title: 'Gami Engine — GPT-Native 3D HTML Game Engine',
+  description: '用生成参考图学习 3D 造型，以生成材质驱动可互动浏览器场景。',
   openGraph: {
-    title: 'FRAME — GPT Scene Engine',
-    description: '原创多层住宅、分件生成资产、人物动画与可推门物理。',
-    images: [{ url: '/og.png', width: 1536, height: 1024, alt: 'FRAME GPT Scene Engine 多层住宅演示' }],
+    title: 'Gami Engine — GPT-Native 3D HTML Game Engine',
+    description: '原创四层住宅 Demo、生成材质、独立交互部件、角色动画与可推门物理。',
+    images: [{ url: '/og.png', width: 1536, height: 1024, alt: 'Gami Engine 四层住宅 3D 演示' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'FRAME — GPT Scene Engine',
-    description: '原创多层住宅、分件生成资产、人物动画与可推门物理。',
+    title: 'Gami Engine — GPT-Native 3D HTML Game Engine',
+    description: '生成参考图学习造型，生成材质驱动真实可互动的 3D 浏览器场景。',
     images: ['/og.png'],
   },
 };

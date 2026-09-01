@@ -2,11 +2,11 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import {
-  Boxes, Braces, Building2, Check, ChevronRight, CirclePause, CirclePlay,
-  Cuboid, DoorOpen, Download, Eye, Footprints, Grid3X3, Image as ImageIcon,
+  Boxes, Braces, Building2, Camera, Check, ChevronRight, CirclePause, CirclePlay,
+  Cuboid, DoorOpen, Download, Eye, Footprints, Gamepad2, Grid3X3, Image as ImageIcon,
   Layers3, LoaderCircle, Moon, Sparkles, Sun, UserRound, WandSparkles,
 } from 'lucide-react';
-import { GameCanvas } from './game-canvas';
+import { GameCanvas, type CameraMode } from './game-canvas';
 import { buildingScene } from '@/engine/demo-scene';
 import type { AssetRecipe } from '@/engine/types';
 
@@ -16,6 +16,7 @@ const kindIcon = {
   'door-face': DoorOpen,
   prop: Cuboid,
   character: UserRound,
+  material: ImageIcon,
 };
 
 export function GameEngineStudio() {
@@ -23,8 +24,9 @@ export function GameEngineStudio() {
   const [selectedId, setSelectedId] = useState('character.operator');
   const [paused, setPaused] = useState(false);
   const [showPhysics, setShowPhysics] = useState(false);
-  const [nightVision, setNightVision] = useState(true);
-  const [status, setStatus] = useState('WASD 移动 · E 开门 · 在楼梯区域按 R/F 上下楼');
+  const [nightVision, setNightVision] = useState(false);
+  const [cameraMode, setCameraMode] = useState<CameraMode>('editor');
+  const [status, setStatus] = useState('WASD 移动 · E 开门 · Q 互动 · 在楼梯按 R/F 上下楼');
   const [generating, setGenerating] = useState(false);
   const [notice, setNotice] = useState('');
   const floor = buildingScene.floors[floorIndex];
@@ -55,7 +57,7 @@ export function GameEngineStudio() {
       const response = await fetch('/api/assets/generate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ assetId: asset.id, kind: asset.kind, prompt: asset.prompt, styleLock: buildingScene.styleLock }),
+        body: JSON.stringify({ assetId: asset.id, kind: asset.kind, usage: asset.usage, prompt: asset.prompt, styleLock: buildingScene.styleLock }),
       });
       const data = await response.json() as { image?: string; message?: string };
       if (!response.ok || !data.image) throw new Error(data.message ?? '生成服务暂不可用');
@@ -63,7 +65,9 @@ export function GameEngineStudio() {
       link.href = data.image;
       link.download = `${asset.id}.png`;
       link.click();
-      setNotice('资产已生成。把文件路径写入 manifest 的 source 即可替换。');
+      setNotice(asset.usage === 'reference-study'
+        ? '参考图已生成。先提取轮廓、比例和材质分区，再重建 Mesh；不要把整张图直接贴进运行时。'
+        : '材质已生成。验证无缝和平光后，把路径写入 manifest 的 source。');
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '生成失败');
     } finally {
@@ -76,11 +80,12 @@ export function GameEngineStudio() {
       <header className="topbar">
         <div className="brand-lockup">
           <span className="brand-mark"><Boxes size={18} /></span>
-          <div><strong>FRAME</strong><span>GPT SCENE ENGINE</span></div>
+          <div><strong>GAMI</strong><span>3D SCENE ENGINE</span></div>
         </div>
         <nav className="mode-switch" aria-label="工作模式">
-          <button className="active"><Building2 size={14} /> 建筑</button>
-          <button><ImageIcon size={14} /> 资产</button>
+          <button className="active"><Gamepad2 size={14} /> DEMO</button>
+          <button><Building2 size={14} /> 场景</button>
+          <button><ImageIcon size={14} /> 材质</button>
           <button><Braces size={14} /> JSON</button>
         </nav>
         <div className="top-actions">
@@ -95,7 +100,7 @@ export function GameEngineStudio() {
       <section className="workspace">
         <aside className="scene-panel panel">
           <div className="panel-heading"><span>BUILDING GRAPH</span><button title="建筑层级"><Layers3 size={15} /></button></div>
-          <div className="scene-title"><span className="scene-dot" /><div><strong>{buildingScene.name}</strong><small>building.v1 · 4 streamed floors</small></div></div>
+          <div className="scene-title"><span className="scene-dot" /><div><strong>{buildingScene.name}</strong><small>Gami Engine · Three.js · 4 streamed floors</small></div></div>
           <div className="floor-stack" aria-label="楼层选择">
             {[...buildingScene.floors].reverse().map((item) => (
               <button key={item.id} className={floor.id === item.id ? 'floor-row active' : 'floor-row'} onClick={() => setFloorIndex(item.index)}>
@@ -111,13 +116,16 @@ export function GameEngineStudio() {
               <TreeItem label="墙体" detail={`${floor.walls.length} static colliders`} />
               <TreeItem label="可推门" detail={`${floor.doors.length} hinge bodies`} accent />
             </TreeGroup>
+            <TreeGroup label="INTERACTIVE PROPS" count={floor.props.length}>
+              {floor.props.map((prop) => <TreeItem key={prop.id} label={prop.name} detail={`${prop.parts?.length ?? 0} 子部件 · ${prop.interaction ? '可互动' : '场景物件'}`} accent={Boolean(prop.interaction || prop.parts?.length)} />)}
+            </TreeGroup>
             <TreeGroup label="OCCUPANTS" count={floor.occupants.length}>
               {floor.occupants.map((person) => <TreeItem key={person.id} label={person.name} detail={`${person.role} · ${person.behavior}`} accent={person.role === 'unknown'} />)}
             </TreeGroup>
           </div>
           <div className="principle-card">
-            <span><Sparkles size={14} /> 分离原则</span>
-            <p>GPT 负责像素；建筑尺寸、门轴、动画、AI、灯光与材质穿透由结构化数据控制。</p>
+            <span><Sparkles size={14} /> 3D 分离原则</span>
+            <p>GPT 图片只做 PBR 材质；Mesh、门轴、抽屉、碰撞、角色骨骼与灯光由引擎控制。</p>
           </div>
         </aside>
 
@@ -125,20 +133,22 @@ export function GameEngineStudio() {
           <div className="viewport-toolbar">
             <div><span className="live-dot" /> LIVE · {floor.name} <b>60 FPS</b></div>
             <div>
+              <button className={cameraMode === 'follow' ? 'active' : ''} onClick={() => setCameraMode((value) => value === 'editor' ? 'follow' : 'editor')}><Camera size={14} /> {cameraMode === 'editor' ? '俯视编辑' : '跟随游玩'}</button>
               <button className={nightVision ? 'active' : ''} onClick={() => setNightVision((value) => !value)}>{nightVision ? <Moon size={14} /> : <Sun size={14} />} NV</button>
               <button className={showPhysics ? 'active' : ''} onClick={() => setShowPhysics((value) => !value)}><Eye size={14} /> 碰撞</button>
             </div>
           </div>
           <div className="canvas-wrap">
-            <GameCanvas floorIndex={floorIndex} paused={paused} showPhysics={showPhysics} nightVision={nightVision} onFloorChange={changeFloor} onStatus={changeStatus} />
+            <GameCanvas floorIndex={floorIndex} paused={paused} showPhysics={showPhysics} nightVision={nightVision} cameraMode={cameraMode} onFloorChange={changeFloor} onStatus={changeStatus} />
             <div className="floor-badge"><span>{floor.name}</span><p>{floor.subtitle}</p></div>
-            <div className="play-hint"><kbd>WASD</kbd><span>移动</span><kbd>E</kbd><span>门</span><kbd>R/F</kbd><span>楼层</span></div>
+            <div className="play-hint"><kbd>WASD</kbd><span>移动</span><kbd>E</kbd><span>门</span><kbd>Q</kbd><span>物品</span><kbd>R/F</kbd><span>楼层</span></div>
             <div className="physics-status"><Footprints size={14} /><p>{status}</p></div>
           </div>
           <div className="viewport-footer">
-            <span>CAMERA <b>ORTHO · 90°</b></span>
+            <span>RENDERER <b>THREE.JS · WEBGL</b></span>
+            <span>CAMERA <b>{cameraMode === 'editor' ? 'EDITOR ORBIT' : 'PLAYER FOLLOW'}</b></span>
             <span>STREAM <b>{floor.id.toUpperCase()} ACTIVE</b></span>
-            <span>PLAYER <b>4 × 4 / 8 FPS</b></span>
+            <span>PLAYER <b>3D RIG</b></span>
           </div>
         </section>
 
@@ -153,8 +163,8 @@ export function GameEngineStudio() {
               const Icon = kindIcon[asset.kind];
               return (
                 <button key={asset.id} className={selected.id === asset.id ? 'asset-row selected' : 'asset-row'} onClick={() => setSelectedId(asset.id)}>
-                  <span className="asset-thumb">{asset.source ? <img src={asset.source} alt="" /> : <Icon size={17} />}</span>
-                  <span className="asset-copy"><strong>{asset.name}</strong><small>{asset.atlas ? `${asset.atlas.columns * asset.atlas.rows} frames` : `${asset.kind} · ${asset.side ?? 'top'}`}</small></span>
+                  <span className={asset.source ? 'asset-thumb has-image' : 'asset-thumb'} style={asset.source ? { backgroundImage: `url(${asset.source})` } : undefined}>{asset.source ? null : <Icon size={17} />}</span>
+                  <span className="asset-copy"><strong>{asset.name}</strong><small>{asset.atlas ? `${asset.atlas.columns * asset.atlas.rows} frames` : `${asset.usage ?? asset.kind} · ${asset.side ?? 'top'}`}</small></span>
                   <span className={asset.state === 'ready' ? 'asset-state ready' : 'asset-state recipe'}>{asset.state === 'ready' ? 'READY' : 'RECIPE'}</span>
                 </button>
               );
@@ -165,12 +175,16 @@ export function GameEngineStudio() {
             <p>{selected.description}</p>
             <div className="metrics">
               <span><small>物理尺寸</small><b>{selected.physicalSize.x} × {selected.physicalSize.y}m</b></span>
-              <span><small>{selected.atlas ? '动画' : 'Pivot'}</small><b>{selected.atlas ? `${selected.atlas.columns}×${selected.atlas.rows} @ ${selected.atlas.fps}` : `${selected.pivot.x}, ${selected.pivot.y}`}</b></span>
+              <span><small>{selected.atlas ? '动画' : '用途'}</small><b>{selected.atlas ? `${selected.atlas.columns}×${selected.atlas.rows} @ ${selected.atlas.fps}` : selected.usage ?? 'recipe'}</b></span>
             </div>
+            {selected.referenceStudy && <div className="prompt-preview">学习：{selected.referenceStudy.learn.join(' / ')} · 运行时规则：不直接渲染整图</div>}
+            {selected.geometry && <div className="prompt-preview">建模：{selected.geometry.source} · {(selected.geometry.independentlyModeledParts ?? []).join(' / ')}</div>}
+            {selected.texture && <div className="prompt-preview">贴图：{selected.texture.semantic} · {selected.texture.tileable ? '无缝平铺' : '单次映射'} · {selected.texture.metersPerTile.x}m/块</div>}
+            {selected.interaction && <div className="prompt-preview">交互：{selected.interaction.actions.join(' / ')} · {selected.interaction.states.map((state) => state.label).join(' → ')}</div>}
             <div className="prompt-preview">{selected.prompt}</div>
             <button className="generate-button" disabled={generating} onClick={() => generateAsset(selected)}>
               {generating ? <LoaderCircle className="spin" size={16} /> : selected.atlas ? <Footprints size={16} /> : <Sparkles size={16} />}
-              {generating ? '生成中…' : selected.state === 'ready' ? '重新生成这个部件' : '生成这个部件'}
+              {generating ? '生成中…' : `${selected.state === 'ready' ? '重新生成' : '生成'}${selected.usage === 'reference-study' ? '参考图' : selected.usage === 'runtime-texture' ? '材质' : '资产'}`}
             </button>
             {notice && <output className="notice">{notice}</output>}
           </div>

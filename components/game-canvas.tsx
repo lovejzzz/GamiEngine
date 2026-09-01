@@ -1,62 +1,535 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildingScene } from '@/engine/demo-scene';
+import { resolveRuntimeSource } from '@/engine/asset-registry';
+import type { FloorSpec, InteractionProfile, PropSpec, RectSpec, Vec2 } from '@/engine/types';
 import { circleHitsRect, nearestFloorIndex, pointToDoor, pushDoor, updateDoor, type RuntimeDoor } from '@/engine/runtime';
+
+export type CameraMode = 'editor' | 'follow';
 
 type Props = {
   floorIndex: number;
   paused: boolean;
   showPhysics: boolean;
   nightVision: boolean;
+  cameraMode: CameraMode;
   onFloorChange: (index: number) => void;
   onStatus: (label: string) => void;
 };
 
-const keys = new Set<string>();
+type Rig = {
+  root: THREE.Group;
+  leftArm: THREE.Group;
+  rightArm: THREE.Group;
+  leftLeg: THREE.Group;
+  rightLeg: THREE.Group;
+};
 
-export function GameCanvas({ floorIndex, paused, showPhysics, nightVision, onFloorChange, onStatus }: Props) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const stateRef = useRef({ paused, showPhysics, nightVision, onFloorChange, onStatus });
-  useEffect(() => { stateRef.current = { paused, showPhysics, nightVision, onFloorChange, onStatus }; }, [paused, showPhysics, nightVision, onFloorChange, onStatus]);
+type FloorMemory = {
+  doors: Record<string, number>;
+  props: Record<string, string>;
+  parts: Record<string, string>;
+  offsets: Record<string, Vec2>;
+};
+
+const keys = new Set<string>();
+const memories = new Map<string, FloorMemory>();
+const ppm = buildingScene.world.pixelsPerMeter;
+const toMeters = (value: number) => value / ppm;
+const toWorld = (point: Vec2) => new THREE.Vector3(
+  toMeters(point.x - buildingScene.world.width / 2),
+  0,
+  toMeters(point.y - buildingScene.world.height / 2),
+);
+
+function makeMemory(floor: FloorSpec): FloorMemory {
+  const existing = memories.get(floor.id);
+  if (existing) return existing;
+  const memory: FloorMemory = { doors: {}, props: {}, parts: {}, offsets: {} };
+  for (const door of floor.doors) memory.doors[door.id] = door.closedAngle;
+  for (const prop of floor.props) {
+    if (prop.interaction) memory.props[prop.id] = prop.interaction.defaultState;
+    for (const part of prop.parts ?? []) memory.parts[`${prop.id}:${part.id}`] = part.interaction.defaultState;
+  }
+  memories.set(floor.id, memory);
+  return memory;
+}
+
+export function GameCanvas({
+  floorIndex,
+  paused,
+  showPhysics,
+  nightVision,
+  cameraMode,
+  onFloorChange,
+  onStatus,
+}: Props) {
+  const mountRef = useRef<HTMLDivElement>(null);
+  const stateRef = useRef({ paused, showPhysics, nightVision, cameraMode, onFloorChange, onStatus });
+  useEffect(() => {
+    stateRef.current = { paused, showPhysics, nightVision, cameraMode, onFloorChange, onStatus };
+  }, [paused, showPhysics, nightVision, cameraMode, onFloorChange, onStatus]);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const context = canvas.getContext('2d');
-    if (!context) return;
+    const mount = mountRef.current;
+    if (!mount) return;
     const floor = buildingScene.floors[floorIndex];
-    const floorTexture = new Image();
-    floorTexture.src = '/assets/floor-oak.png';
-    const operatorAtlas = new Image();
-    operatorAtlas.src = '/assets/operator-walk-4x4-rgba.png';
-    const residentImage = new Image();
-    residentImage.src = '/assets/character-explorer.png';
-    const player = { ...floor.spawn, radius: 17, directionRow: 0, moving: false };
+    const memory = makeMemory(floor);
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a100d);
+    scene.fog = new THREE.FogExp2(0x0a100d, 0.027);
+
+    const camera = new THREE.PerspectiveCamera(43, 1, 0.05, 60);
+    camera.position.set(0, 10.5, 8.2);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.12;
+    renderer.domElement.className = 'game-canvas';
+    renderer.domElement.tabIndex = 0;
+    renderer.domElement.setAttribute('aria-label', 'Gami Engine 3D 房屋演示。WASD 移动，E 开门，Q 互动，R/F 上下楼。');
+    mount.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.enablePan = false;
+    controls.minDistance = 5;
+    controls.maxDistance = 18;
+    controls.maxPolarAngle = Math.PI * 0.47;
+    controls.target.set(0, 0.4, 0);
+
+    const textureLoader = new THREE.TextureLoader();
+    const textureSource = (id: string) => resolveRuntimeSource(buildingScene.assets, id, 'runtime-texture');
+    const makeTexture = (source: string, repeatX = 1, repeatY = 1) => {
+      const texture = textureLoader.load(source);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set(repeatX, repeatY);
+      texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      return texture;
+    };
+    const material = (
+      color: number,
+      source?: string | null,
+      roughness = 0.72,
+      metalness = 0,
+      repeatX = 1,
+      repeatY = 1,
+    ) => new THREE.MeshStandardMaterial({
+      color,
+      map: source ? makeTexture(source, repeatX, repeatY) : null,
+      roughness,
+      metalness,
+    });
+    const wallMaterial = material(0xd8cdb8, textureSource('material.wallpaper.ivory'), 0.9, 0, 1.5, 1.2);
+    const wallCapMaterial = material(0x8f8b80, undefined, 0.86);
+    const walnutMaterial = material(0xc49a78, textureSource('material.walnut'), 0.7, 0, 1.4, 1.4);
+    const upholsteryMaterial = material(0x5e6840, textureSource('material.upholstery.olive'), 0.97, 0, 1.8, 1.8);
+    const sageMaterial = material(0x788667, textureSource('material.sage-paint'), 0.82, 0, 1.2, 1.2);
+    const tacticalMaterial = material(0x1f2924, textureSource('material.tactical-fabric'), 0.95, 0, 2, 2);
+    const brassMaterial = material(0xb08b42, undefined, 0.34, 0.72);
+    const darkMetalMaterial = material(0x222725, undefined, 0.42, 0.72);
+    const fabricMaterial = material(0xa89e8d, undefined, 0.98);
+    const floorSources: Record<string, string | null> = {
+      'floor.herringbone': textureSource('floor.herringbone'),
+      'floor.checker': textureSource('floor.checker'),
+      'floor.carpet': textureSource('floor.carpet'),
+      'floor.concrete': textureSource('floor.concrete'),
+    };
+
+    const worldRoot = new THREE.Group();
+    scene.add(worldRoot);
+    const propGroups = new Map<string, THREE.Group>();
+    const propParts = new Map<string, THREE.Object3D>();
+    const debugGroup = new THREE.Group();
+    worldRoot.add(debugGroup);
+
+    const addBox = (
+      parent: THREE.Object3D,
+      size: [number, number, number],
+      position: [number, number, number],
+      boxMaterial: THREE.Material,
+      cast = true,
+    ) => {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), boxMaterial);
+      mesh.position.set(...position);
+      mesh.castShadow = cast;
+      mesh.receiveShadow = true;
+      parent.add(mesh);
+      return mesh;
+    };
+
+    const addColliderOutline = (rect: RectSpec, height = 0.12, color = 0x5df3a5) => {
+      const center = toWorld({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
+      const geometry = new THREE.BoxGeometry(toMeters(rect.width), height, toMeters(rect.height));
+      const edges = new THREE.LineSegments(
+        new THREE.EdgesGeometry(geometry),
+        new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.8 }),
+      );
+      edges.position.set(center.x, height / 2 + 0.03, center.z);
+      debugGroup.add(edges);
+    };
+
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(18, 13),
+      new THREE.MeshStandardMaterial({ color: 0x111813, roughness: 1 }),
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.09;
+    ground.receiveShadow = true;
+    worldRoot.add(ground);
+
+    for (const room of floor.rooms) {
+      const center = toWorld({ x: room.x + room.width / 2, y: room.y + room.height / 2 });
+      const width = toMeters(room.width);
+      const depth = toMeters(room.height);
+      const roomMaterial = material(
+        0xffffff,
+        floorSources[room.floorAsset],
+        room.floorAsset === 'floor.carpet' ? 1 : 0.76,
+        0,
+        Math.max(1, width / 1.55),
+        Math.max(1, depth / 1.55),
+      );
+      addBox(worldRoot, [width, 0.08, depth], [center.x, -0.04, center.z], roomMaterial, false);
+    }
+
+    for (const wall of floor.walls) {
+      const center = toWorld({ x: wall.x + wall.width / 2, y: wall.y + wall.height / 2 });
+      const width = toMeters(wall.width);
+      const depth = toMeters(wall.height);
+      const isSouthCutaway = wall.id.startsWith('outer-s');
+      const isOuterSide = wall.id === 'outer-w' || wall.id === 'outer-e';
+      const wallHeight = isSouthCutaway ? 0.34 : isOuterSide ? 1.05 : 1.42;
+      const wallMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(width, wallHeight, depth),
+        [wallMaterial, wallMaterial, wallCapMaterial, wallCapMaterial, wallMaterial, wallMaterial],
+      );
+      wallMesh.position.set(center.x, wallHeight / 2, center.z);
+      wallMesh.castShadow = true;
+      wallMesh.receiveShadow = true;
+      worldRoot.add(wallMesh);
+      addColliderOutline(wall, wallHeight + 0.07);
+    }
+
     const doors: RuntimeDoor[] = floor.doors.map((spec) => ({
       id: spec.id,
       name: spec.name,
       hinge: { ...spec.hinge },
       length: spec.length,
       width: spec.width,
-      angle: spec.closedAngle,
+      angle: memory.doors[spec.id] ?? spec.closedAngle,
       angularVelocity: 0,
       minAngle: spec.minAngle,
       maxAngle: spec.maxAngle,
       motorTarget: null,
     }));
-    let frameRequest = 0;
-    let previous = performance.now();
-    let dpr = 1;
-    let floorPattern: CanvasPattern | null = null;
-    let stairCooldown = false;
+    const doorGroups = new Map<string, THREE.Group>();
+    for (const door of doors) {
+      const hinge = toWorld(door.hinge);
+      const group = new THREE.Group();
+      group.position.copy(hinge);
+      group.rotation.y = -door.angle;
+      const length = toMeters(door.length);
+      addBox(group, [length, 1.58, 0.095], [length / 2, 0.79, 0], material(0xbab3a4, textureSource('material.wallpaper.ivory'), 0.72, 0, 0.8, 1.2));
+      addBox(group, [0.045, 0.045, 0.12], [length - 0.13, 0.86, 0], brassMaterial);
+      worldRoot.add(group);
+      doorGroups.set(door.id, group);
+    }
 
-    const useStairs = (direction: 1 | -1) => {
-      const stairs = floor.stairs;
-      const nearStairs = circleHitsRect(player, 44, stairs);
-      const targetId = direction === 1 ? stairs.toUp : stairs.toDown;
-      if (!nearStairs) {
-        stateRef.current.onStatus('先走到绿色楼梯区域，再按 R/F 换层');
+    const createSofa = (prop: PropSpec) => {
+      const group = new THREE.Group();
+      const width = toMeters(prop.size.x);
+      const depth = toMeters(prop.size.y);
+      addBox(group, [width * 0.92, 0.36, depth * 0.72], [0, 0.3, 0.05], upholsteryMaterial);
+      addBox(group, [width, 0.7, depth * 0.18], [0, 0.58, -depth * 0.38], upholsteryMaterial);
+      addBox(group, [width * 0.07, 0.48, depth], [-width * 0.47, 0.4, 0], upholsteryMaterial);
+      addBox(group, [width * 0.07, 0.48, depth], [width * 0.47, 0.4, 0], upholsteryMaterial);
+      for (let index = -1; index <= 1; index += 1) {
+        addBox(group, [width * 0.27, 0.12, depth * 0.58], [index * width * 0.29, 0.53, 0.07], upholsteryMaterial);
+      }
+      return group;
+    };
+
+    const createBed = (prop: PropSpec) => {
+      const group = new THREE.Group();
+      const width = toMeters(prop.size.x);
+      const depth = toMeters(prop.size.y);
+      addBox(group, [width, 0.22, depth], [0, 0.2, 0], walnutMaterial);
+      addBox(group, [width * 0.94, 0.3, depth * 0.9], [0, 0.42, 0.04], fabricMaterial);
+      addBox(group, [width, 0.7, 0.12], [0, 0.62, -depth * 0.47], upholsteryMaterial);
+      addBox(group, [width * 0.36, 0.12, depth * 0.2], [-width * 0.23, 0.65, -depth * 0.28], material(0xd9d0c3, undefined, 1));
+      addBox(group, [width * 0.36, 0.12, depth * 0.2], [width * 0.23, 0.65, -depth * 0.28], material(0xd9d0c3, undefined, 1));
+      const drawer = addBox(group, [width * 0.58, 0.18, depth * 0.32], [0, 0.15, depth * 0.23], walnutMaterial);
+      drawer.visible = false;
+      propParts.set(`${prop.id}:searched`, drawer);
+      return group;
+    };
+
+    const createTable = (prop: PropSpec) => {
+      const group = new THREE.Group();
+      const width = toMeters(prop.size.x);
+      const depth = toMeters(prop.size.y);
+      const top = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.12, 48), walnutMaterial);
+      top.scale.set(width, 1, depth);
+      top.position.y = 0.78;
+      top.castShadow = true;
+      top.receiveShadow = true;
+      group.add(top);
+      addBox(group, [0.15, 0.72, 0.15], [-width * 0.28, 0.38, -depth * 0.22], walnutMaterial);
+      addBox(group, [0.15, 0.72, 0.15], [width * 0.28, 0.38, -depth * 0.22], walnutMaterial);
+      addBox(group, [0.15, 0.72, 0.15], [-width * 0.28, 0.38, depth * 0.22], walnutMaterial);
+      addBox(group, [0.15, 0.72, 0.15], [width * 0.28, 0.38, depth * 0.22], walnutMaterial);
+      return group;
+    };
+
+    const createChair = (prop: PropSpec) => {
+      const group = new THREE.Group();
+      const width = toMeters(prop.size.x);
+      const depth = toMeters(prop.size.y);
+      addBox(group, [width * 0.82, 0.12, depth * 0.82], [0, 0.48, 0], walnutMaterial);
+      addBox(group, [width * 0.82, 0.72, 0.1], [0, 0.78, -depth * 0.38], walnutMaterial);
+      for (const x of [-1, 1]) for (const z of [-1, 1]) {
+        addBox(group, [0.07, 0.46, 0.07], [x * width * 0.34, 0.23, z * depth * 0.34], walnutMaterial);
+      }
+      return group;
+    };
+
+    const createStairs = (prop: PropSpec) => {
+      const group = new THREE.Group();
+      const width = toMeters(prop.size.x);
+      const depth = toMeters(prop.size.y);
+      const steps = 10;
+      for (let index = 0; index < steps; index += 1) {
+        const stepDepth = depth / steps;
+        const height = 0.08 + index * 0.09;
+        addBox(group, [width, height, stepDepth * 0.96], [0, height / 2, -depth / 2 + stepDepth * (index + 0.5)], walnutMaterial);
+      }
+      return group;
+    };
+
+    const createKitchen = (prop: PropSpec) => {
+      const group = new THREE.Group();
+      const width = toMeters(prop.size.x);
+      const depth = toMeters(prop.size.y);
+      addBox(group, [width * 0.92, 0.88, depth * 0.3], [0.05, 0.44, -depth * 0.34], sageMaterial);
+      addBox(group, [width * 0.28, 0.88, depth * 0.75], [-width * 0.34, 0.44, depth * 0.04], sageMaterial);
+      addBox(group, [width * 0.96, 0.1, depth * 0.34], [0.02, 0.93, -depth * 0.34], darkMetalMaterial);
+      addBox(group, [width * 0.32, 0.1, depth * 0.78], [-width * 0.34, 0.93, depth * 0.04], darkMetalMaterial);
+      for (const part of prop.parts ?? []) {
+        const local = new THREE.Vector3(
+          toMeters(part.position.x - prop.position.x),
+          0,
+          toMeters(part.position.y - prop.position.y),
+        );
+        const id = `${prop.id}:${part.id}`;
+        if (part.interaction.motion === 'hinge') {
+          const hinge = new THREE.Group();
+          hinge.position.set(local.x, 0.48, local.z);
+          addBox(hinge, [0.34, 0.58, 0.055], [0.17, 0, 0], sageMaterial);
+          addBox(hinge, [0.035, 0.035, 0.075], [0.29, 0, 0.02], brassMaterial);
+          group.add(hinge);
+          propParts.set(id, hinge);
+        } else {
+          const drawer = new THREE.Group();
+          drawer.position.set(local.x, 0.56, local.z);
+          addBox(drawer, [0.42, 0.18, 0.5], [0, 0, 0.22], walnutMaterial);
+          addBox(drawer, [0.46, 0.22, 0.06], [0, 0, 0.5], sageMaterial);
+          group.add(drawer);
+          propParts.set(id, drawer);
+        }
+      }
+      return group;
+    };
+
+    for (const prop of floor.props) {
+      let group: THREE.Group;
+      if (prop.asset === 'prop.sofa') group = createSofa(prop);
+      else if (prop.asset === 'prop.bed') group = createBed(prop);
+      else if (prop.asset === 'prop.kitchen') group = createKitchen(prop);
+      else if (prop.asset === 'prop.table') group = createTable(prop);
+      else if (prop.asset === 'prop.chair') group = createChair(prop);
+      else if (prop.asset === 'prop.stairs') group = createStairs(prop);
+      else group = new THREE.Group();
+      const position = toWorld(prop.position);
+      const offset = memory.offsets[prop.id] ?? { x: 0, y: 0 };
+      group.position.set(position.x + toMeters(offset.x), 0, position.z + toMeters(offset.y));
+      group.rotation.y = -(prop.rotation ?? 0);
+      worldRoot.add(group);
+      propGroups.set(prop.id, group);
+      if (prop.collider) {
+        addColliderOutline({
+          id: prop.id,
+          x: prop.position.x - prop.collider.width / 2,
+          y: prop.position.y - prop.collider.height / 2,
+          width: prop.collider.width,
+          height: prop.collider.height,
+        }, 0.95, 0xf0c66e);
+      }
+    }
+
+    // Re-apply engine-owned save state after a streamed floor rebuild. Generated
+    // reference images never carry interaction state themselves.
+    for (const prop of floor.props) {
+      const propState = prop.interaction
+        ? memory.props[prop.id] ?? prop.interaction.defaultState
+        : undefined;
+      const bedDrawer = propParts.get(`${prop.id}:searched`);
+      if (bedDrawer) {
+        bedDrawer.visible = propState === 'searched';
+        bedDrawer.position.z = propState === 'searched' ? 0.82 : 0.23;
+      }
+      for (const partSpec of prop.parts ?? []) {
+        const id = `${prop.id}:${partSpec.id}`;
+        const object = propParts.get(id);
+        if (!object) continue;
+        const state = memory.parts[id] ?? partSpec.interaction.defaultState;
+        if (partSpec.interaction.motion === 'hinge') object.rotation.y = state === 'open' ? -1.08 : 0;
+        if (partSpec.interaction.motion === 'translate' && state === 'open') object.position.z += 0.46;
+      }
+    }
+
+    const addRoomDetails = () => {
+      for (const room of floor.rooms) {
+        const center = toWorld({ x: room.x + room.width / 2, y: room.y + room.height / 2 });
+        const width = toMeters(room.width);
+        const depth = toMeters(room.height);
+        if (room.purpose === 'utility') {
+          const boiler = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.4, 1.35, 24), darkMetalMaterial);
+          boiler.position.set(center.x - width * 0.25, 0.68, center.z - depth * 0.18);
+          boiler.castShadow = true;
+          worldRoot.add(boiler);
+        }
+        if (room.purpose === 'storage') {
+          for (let index = -1; index <= 1; index += 1) {
+            addBox(worldRoot, [0.55, 0.52 + (index + 1) * 0.08, 0.55], [center.x + index * 0.72, 0.28, center.z - depth * 0.26], walnutMaterial);
+          }
+        }
+        if (room.purpose === 'bathroom') {
+          addBox(worldRoot, [width * 0.62, 0.52, 0.72], [center.x, 0.26, center.z - depth * 0.27], material(0xd8d8cf, undefined, 0.28));
+          const basin = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.2, 0.62, 20), material(0xd8d8cf, undefined, 0.28));
+          basin.position.set(center.x + width * 0.26, 0.31, center.z + depth * 0.25);
+          worldRoot.add(basin);
+        }
+        if (room.purpose === 'nursery') {
+          addBox(worldRoot, [1.05, 0.34, 1.45], [center.x - width * 0.28, 0.24, center.z - depth * 0.03], fabricMaterial);
+          for (let index = 0; index < 5; index += 1) {
+            addBox(worldRoot, [0.16, 0.16, 0.16], [center.x + 0.45 + (index % 2) * 0.2, 0.08, center.z + (index - 2) * 0.14], material([0xc16f62, 0x7095a0, 0xd1ab5b][index % 3], undefined, 0.8));
+          }
+        }
+        if (room.purpose === 'entry') {
+          const rug = new THREE.Mesh(new THREE.PlaneGeometry(width * 0.55, depth * 0.35), material(0x604c3d, textureSource('floor.carpet'), 1, 0, 1, 1));
+          rug.rotation.x = -Math.PI / 2;
+          rug.position.set(center.x, 0.012, center.z + depth * 0.18);
+          rug.receiveShadow = true;
+          worldRoot.add(rug);
+        }
+      }
+    };
+    addRoomDetails();
+
+    const makeRig = (kind: 'operator' | 'resident', tint = 0x7a756c): Rig => {
+      const root = new THREE.Group();
+      const cloth = kind === 'operator' ? tacticalMaterial : material(tint, undefined, 0.92);
+      const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.21, 0.34, 7, 14), cloth);
+      torso.scale.set(0.92, 1, 0.72);
+      torso.position.y = 1.12;
+      root.add(torso);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 20, 16), material(0xb18d70, undefined, 0.92));
+      head.position.y = 1.52;
+      head.castShadow = true;
+      root.add(head);
+      const hair = new THREE.Mesh(new THREE.SphereGeometry(0.153, 20, 8, 0, Math.PI * 2, 0, Math.PI * 0.48), material(kind === 'operator' ? 0x252b28 : 0x40372f, undefined, 0.92));
+      hair.position.y = 1.535;
+      root.add(hair);
+      const createLimb = (x: number, y: number, limbMaterial: THREE.Material, length = 0.54) => {
+        const pivot = new THREE.Group();
+        pivot.position.set(x, y, 0);
+        const limb = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, Math.max(0.12, length - 0.13), 5, 10), limbMaterial);
+        limb.position.y = -length / 2;
+        limb.castShadow = true;
+        limb.receiveShadow = true;
+        pivot.add(limb);
+        root.add(pivot);
+        return pivot;
+      };
+      const leftArm = createLimb(-0.27, 1.3, cloth, 0.5);
+      const rightArm = createLimb(0.27, 1.3, cloth, 0.5);
+      const leftLeg = createLimb(-0.11, 0.82, kind === 'operator' ? tacticalMaterial : material(0x4b504d, undefined, 0.95), 0.7);
+      const rightLeg = createLimb(0.11, 0.82, kind === 'operator' ? tacticalMaterial : material(0x4b504d, undefined, 0.95), 0.7);
+      if (kind === 'operator') {
+        addBox(root, [0.42, 0.34, 0.12], [0, 1.12, 0.16], darkMetalMaterial);
+        addBox(root, [0.1, 0.95, 0.1], [0.24, 1.12, 0.22], darkMetalMaterial);
+      }
+      root.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          object.castShadow = true;
+          object.receiveShadow = true;
+        }
+      });
+      return { root, leftArm, rightArm, leftLeg, rightLeg };
+    };
+
+    const playerRig = makeRig('operator');
+    const player = { ...floor.spawn, radius: 15, moving: false, facing: Math.PI };
+    playerRig.root.position.copy(toWorld(player));
+    worldRoot.add(playerRig.root);
+    const residentRigs: Array<{ rig: Rig; behavior: FloorSpec['occupants'][number]['behavior']; phase: number }> = [];
+    floor.occupants.forEach((occupant, index) => {
+      const palette = [0x77766e, 0x666f75, 0x7b665d, 0x59665c];
+      const rig = makeRig('resident', palette[index % palette.length]);
+      rig.root.position.copy(toWorld(occupant.position));
+      rig.root.rotation.y = -occupant.facing;
+      if (occupant.behavior === 'sleeping') {
+        rig.root.rotation.x = Math.PI / 2;
+        rig.root.position.y = 0.55;
+      }
+      if (occupant.behavior === 'hiding') rig.root.scale.setScalar(0.82);
+      worldRoot.add(rig.root);
+      residentRigs.push({ rig, behavior: occupant.behavior, phase: index * 1.7 });
+    });
+
+    const hemi = new THREE.HemisphereLight(0xbdd2c8, 0x251c16, 1.22);
+    scene.add(hemi);
+    const moon = new THREE.DirectionalLight(0xc9ddd7, 2.15);
+    moon.position.set(-4, 9, 5);
+    moon.castShadow = true;
+    moon.shadow.mapSize.set(2048, 2048);
+    moon.shadow.camera.left = -8;
+    moon.shadow.camera.right = 8;
+    moon.shadow.camera.top = 7;
+    moon.shadow.camera.bottom = -7;
+    scene.add(moon);
+    const flashlightTarget = new THREE.Object3D();
+    const flashlight = new THREE.SpotLight(0xdceae3, 34, 9, 0.42, 0.58, 1.35);
+    flashlight.castShadow = true;
+    flashlight.shadow.mapSize.set(1024, 1024);
+    flashlight.shadow.camera.near = 0.2;
+    flashlight.shadow.camera.far = 10;
+    flashlight.target = flashlightTarget;
+    scene.add(flashlight, flashlightTarget);
+    for (const light of floor.lights) {
+      if (!light.enabled) continue;
+      const position = toWorld(light.position);
+      const point = new THREE.PointLight(0xffc680, light.intensity * 8, toMeters(light.radius) * 2.6, 1.7);
+      point.position.set(position.x, 2.25, position.z);
+      // Point-light shadows render six shadow views each. The directional moon
+      // and player spotlight own dynamic shadows; room bulbs provide fill only.
+      point.castShadow = false;
+      scene.add(point);
+    }
+
+    const traverseStairs = (direction: 1 | -1) => {
+      const targetId = direction === 1 ? floor.stairs.toUp : floor.stairs.toDown;
+      if (!circleHitsRect(player, 40, floor.stairs)) {
+        stateRef.current.onStatus('先走到楼梯，再按 R/F 换层');
         return;
       }
       if (!targetId) {
@@ -64,30 +537,95 @@ export function GameCanvas({ floorIndex, paused, showPhysics, nightVision, onFlo
         return;
       }
       const target = nearestFloorIndex(floorIndex, direction, buildingScene.floors.length);
-      stateRef.current.onStatus(`楼梯流送：${floor.name} → ${buildingScene.floors[target].name}`);
+      stateRef.current.onStatus(`楼层流送：${floor.name} → ${buildingScene.floors[target].name}`);
       stateRef.current.onFloorChange(target);
     };
 
+    const toggleProfile = (
+      id: string,
+      name: string,
+      profile: InteractionProfile,
+      stateRecord: Record<string, string>,
+      position: Vec2,
+      prop?: PropSpec,
+    ) => {
+      const current = stateRecord[id] ?? profile.defaultState;
+      const index = Math.max(0, profile.states.findIndex((item) => item.id === current));
+      const next = profile.states[(index + 1) % profile.states.length];
+      stateRecord[id] = next.id;
+      if (prop && profile.motion === 'translate') {
+        const dx = position.x - player.x;
+        const dy = position.y - player.y;
+        const length = Math.hypot(dx, dy) || 1;
+        const offset = next.id === profile.defaultState ? { x: 0, y: 0 } : { x: dx / length * 28, y: dy / length * 28 };
+        memory.offsets[id] = offset;
+        const group = propGroups.get(id);
+        if (group) {
+          const base = toWorld(prop.position);
+          group.position.set(base.x + toMeters(offset.x), 0, base.z + toMeters(offset.y));
+        }
+      }
+      const bedDrawer = propParts.get(`${id}:searched`);
+      if (bedDrawer) {
+        bedDrawer.visible = next.id === 'searched';
+        bedDrawer.position.z = next.id === 'searched' ? 0.82 : 0.23;
+      }
+      const part = propParts.get(id);
+      if (part) {
+        if (profile.motion === 'hinge') part.rotation.y = next.id === 'open' ? -1.08 : 0;
+        if (profile.motion === 'translate') part.position.z += next.id === 'open' ? 0.46 : -0.46;
+      }
+      stateRef.current.onStatus(`${name}：${next.label} · 独立 3D 子部件`);
+    };
+
+    const interact = () => {
+      const candidates: Array<{ distance: number; run: () => void }> = [];
+      for (const prop of floor.props) {
+        for (const part of prop.parts ?? []) {
+          const id = `${prop.id}:${part.id}`;
+          const distance = Math.hypot(player.x - part.position.x, player.y - part.position.y);
+          candidates.push({
+            distance,
+            run: () => toggleProfile(id, part.name, part.interaction, memory.parts, part.position),
+          });
+        }
+        if (prop.interaction) {
+          const offset = memory.offsets[prop.id] ?? { x: 0, y: 0 };
+          const position = { x: prop.position.x + offset.x, y: prop.position.y + offset.y };
+          const distance = Math.hypot(player.x - position.x, player.y - position.y);
+          candidates.push({
+            distance,
+            run: () => toggleProfile(prop.id, prop.name, prop.interaction!, memory.props, position, prop),
+          });
+        }
+      }
+      const nearest = candidates.filter((item) => item.distance < 84).sort((a, b) => a.distance - b.distance)[0];
+      if (!nearest) stateRef.current.onStatus('附近没有可互动的物品');
+      else nearest.run();
+    };
+
+    let stairCooldown = false;
     const keyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
-      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd', 'e', 'r', 'f'].includes(key)) event.preventDefault();
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd', 'e', 'q', 'r', 'f'].includes(key)) event.preventDefault();
       keys.add(key);
       if (event.repeat) return;
       if (key === 'e') {
         const nearby = doors
-          .map((item) => ({ item, distance: Math.hypot(player.x - item.hinge.x, player.y - item.hinge.y) }))
-          .filter(({ distance }) => distance < 112)
+          .map((door) => ({ door, distance: Math.hypot(player.x - door.hinge.x, player.y - door.hinge.y) }))
+          .filter(({ distance }) => distance < 105)
           .sort((a, b) => a.distance - b.distance)[0];
         if (!nearby) stateRef.current.onStatus('附近没有可操作的门');
         else {
-          const item = nearby.item;
-          const nearMin = Math.abs(item.angle - item.minAngle) < Math.abs(item.angle - item.maxAngle);
-          item.motorTarget = nearMin ? item.maxAngle : item.minAngle;
-          stateRef.current.onStatus(`${item.name}：门轴马达 ${nearMin ? '打开' : '关闭'}`);
+          const door = nearby.door;
+          const nearMin = Math.abs(door.angle - door.minAngle) < Math.abs(door.angle - door.maxAngle);
+          door.motorTarget = nearMin ? door.maxAngle : door.minAngle;
+          stateRef.current.onStatus(`${door.name}：${nearMin ? '打开' : '关闭'}`);
         }
       }
-      if (!stairCooldown && key === 'r') { stairCooldown = true; useStairs(1); }
-      if (!stairCooldown && key === 'f') { stairCooldown = true; useStairs(-1); }
+      if (key === 'q') interact();
+      if (!stairCooldown && key === 'r') { stairCooldown = true; traverseStairs(1); }
+      if (!stairCooldown && key === 'f') { stairCooldown = true; traverseStairs(-1); }
     };
     const keyUp = (event: KeyboardEvent) => {
       keys.delete(event.key.toLowerCase());
@@ -96,150 +634,43 @@ export function GameCanvas({ floorIndex, paused, showPhysics, nightVision, onFlo
     window.addEventListener('keydown', keyDown);
     window.addEventListener('keyup', keyUp);
 
-    const drawFurniture = () => {
-      for (const room of floor.rooms) {
-        context.save();
-        context.shadowColor = 'rgba(0,0,0,.38)';
-        context.shadowBlur = 10;
-        context.shadowOffsetY = 6;
-        if (room.purpose === 'bedroom' || room.purpose === 'nursery') {
-          context.fillStyle = room.purpose === 'nursery' ? '#766e58' : '#505953';
-          context.beginPath();
-          context.roundRect(room.x + 30, room.y + 42, Math.min(120, room.width - 60), 82, 8);
-          context.fill();
-          context.fillStyle = '#9b927f';
-          context.fillRect(room.x + 39, room.y + 50, Math.min(102, room.width - 78), 28);
-        } else if (room.purpose === 'living') {
-          context.fillStyle = '#4d5d55';
-          context.beginPath();
-          context.roundRect(room.x + 42, room.y + 48, 160, 62, 14);
-          context.fill();
-        } else if (room.purpose === 'kitchen') {
-          context.fillStyle = '#73766c';
-          context.fillRect(room.x + room.width - 42, room.y + 20, 30, room.height - 40);
-          context.fillStyle = '#8b8d82';
-          context.fillRect(room.x + 22, room.y + 22, room.width - 76, 34);
-        } else if (room.purpose === 'dining' || room.purpose === 'studio') {
-          context.fillStyle = '#634936';
-          context.beginPath();
-          context.ellipse(room.x + room.width * .6, room.y + room.height * .52, 70, 38, 0, 0, Math.PI * 2);
-          context.fill();
-        } else if (room.purpose === 'storage' || room.purpose === 'utility') {
-          context.fillStyle = '#4e5049';
-          for (let i = 0; i < 3; i += 1) context.fillRect(room.x + 32 + i * 66, room.y + 42, 46, 72);
-        }
-        context.restore();
-      }
+    let frameRequest = 0;
+    let previous = performance.now();
+    const resize = () => {
+      const width = Math.max(1, mount.clientWidth);
+      const height = Math.max(1, mount.clientHeight);
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
     };
+    const observer = new ResizeObserver(resize);
+    observer.observe(mount);
+    resize();
 
-    const drawDoor = (item: RuntimeDoor) => {
-      context.save();
-      context.translate(item.hinge.x, item.hinge.y);
-      context.rotate(item.angle);
-      context.shadowColor = 'rgba(0,0,0,.48)';
-      context.shadowBlur = 12;
-      context.shadowOffsetY = 6;
-      const gradient = context.createLinearGradient(0, -item.width / 2, 0, item.width / 2);
-      gradient.addColorStop(0, '#b4afa2');
-      gradient.addColorStop(.42, '#77766f');
-      gradient.addColorStop(1, '#4d4f4a');
-      context.fillStyle = gradient;
-      context.beginPath();
-      context.roundRect(0, -item.width / 2, item.length, item.width, 2);
-      context.fill();
-      context.shadowColor = 'transparent';
-      context.fillStyle = '#b79a56';
-      context.beginPath();
-      context.arc(item.length - 11, 0, 2.4, 0, Math.PI * 2);
-      context.fill();
-      if (stateRef.current.showPhysics) {
-        context.strokeStyle = '#5df3a5';
-        context.lineWidth = 1.5;
-        context.strokeRect(0, -item.width / 2 - 3, item.length, item.width + 6);
-        context.fillStyle = '#5df3a5';
-        context.beginPath();
-        context.arc(0, 0, 5, 0, Math.PI * 2);
-        context.fill();
-      }
-      context.restore();
-    };
-
-    const drawOccupant = (occupant: typeof floor.occupants[number], index: number) => {
-      const pulse = Math.sin(performance.now() / 620 + index) * 1.5;
-      context.save();
-      context.translate(occupant.position.x, occupant.position.y);
-      context.rotate(occupant.facing);
-      context.globalAlpha = occupant.behavior === 'hiding' ? .68 : .94;
-      if (residentImage.complete) context.drawImage(residentImage, -22, -26 + pulse, 44, 44);
-      else {
-        context.fillStyle = '#6f7468';
-        context.beginPath();
-        context.arc(0, 0, 14, 0, Math.PI * 2);
-        context.fill();
-      }
-      context.restore();
-      if (stateRef.current.showPhysics) {
-        context.fillStyle = occupant.role === 'hostile' ? '#ff6f66' : occupant.role === 'civilian' ? '#73d9ff' : '#f3c56b';
-        context.beginPath();
-        context.arc(occupant.position.x, occupant.position.y - 26, 4, 0, Math.PI * 2);
-        context.fill();
-      }
+    const animateRig = (rig: Rig, phase: number, moving: boolean, speed = 1) => {
+      const swing = moving ? Math.sin(phase * speed) * 0.62 : 0;
+      rig.leftLeg.rotation.x = swing;
+      rig.rightLeg.rotation.x = -swing;
+      rig.leftArm.rotation.x = -swing * 0.7;
+      rig.rightArm.rotation.x = swing * 0.7;
     };
 
     const render = (now: number) => {
-      const dt = Math.min((now - previous) / 1000, .035);
+      const dt = Math.min((now - previous) / 1000, 0.035);
       previous = now;
-      const cssWidth = canvas.clientWidth;
-      const cssHeight = canvas.clientHeight;
-      const scale = Math.min(cssWidth / buildingScene.world.width, cssHeight / buildingScene.world.height);
-      const offsetX = (cssWidth - buildingScene.world.width * scale) / 2;
-      const offsetY = (cssHeight - buildingScene.world.height * scale) / 2;
-      context.setTransform(dpr, 0, 0, dpr, 0, 0);
-      context.clearRect(0, 0, cssWidth, cssHeight);
-      context.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offsetX, dpr * offsetY);
-      context.fillStyle = '#111512';
-      context.fillRect(0, 0, buildingScene.world.width, buildingScene.world.height);
-      context.fillStyle = '#20251f';
-      context.fillRect(52, 22, 856, 576);
+      const elapsed = now / 1000;
+      const state = stateRef.current;
+      controls.enabled = state.cameraMode === 'editor';
+      debugGroup.visible = state.showPhysics;
+      renderer.domElement.style.filter = state.nightVision
+        ? 'sepia(.7) hue-rotate(72deg) saturate(1.45) brightness(1.18)'
+        : 'none';
+      scene.background = new THREE.Color(state.nightVision ? 0x06140b : 0x0a100d);
+      scene.fog = new THREE.FogExp2(state.nightVision ? 0x06140b : 0x0a100d, state.nightVision ? 0.021 : 0.027);
+      hemi.color.setHex(state.nightVision ? 0x83d59a : 0xbdd2c8);
+      moon.color.setHex(state.nightVision ? 0x6bdc88 : 0xc9ddd7);
 
-      if (!floorPattern && floorTexture.complete) floorPattern = context.createPattern(floorTexture, 'repeat');
-      for (const room of floor.rooms) {
-        context.fillStyle = room.floorAsset === 'floor.oak' && floorPattern ? floorPattern : '#504f49';
-        context.fillRect(room.x, room.y, room.width, room.height);
-        context.fillStyle = room.tint;
-        context.fillRect(room.x, room.y, room.width, room.height);
-        context.fillStyle = 'rgba(224,232,219,.62)';
-        context.font = '600 11px ui-monospace, monospace';
-        context.fillText(room.name.toUpperCase(), room.x + 15, room.y + 22);
-      }
-      drawFurniture();
-
-      context.fillStyle = 'rgba(43,88,65,.34)';
-      context.fillRect(floor.stairs.x, floor.stairs.y, floor.stairs.width, floor.stairs.height);
-      context.strokeStyle = 'rgba(100,244,164,.65)';
-      context.lineWidth = 1.5;
-      for (let y = floor.stairs.y + 9; y < floor.stairs.y + floor.stairs.height; y += 13) {
-        context.beginPath();
-        context.moveTo(floor.stairs.x + 8, y);
-        context.lineTo(floor.stairs.x + floor.stairs.width - 8, y);
-        context.stroke();
-      }
-
-      context.shadowColor = 'rgba(0,0,0,.55)';
-      context.shadowBlur = 16;
-      context.shadowOffsetY = 8;
-      for (const wall of floor.walls) {
-        const wallGradient = context.createLinearGradient(wall.x, wall.y, wall.x, wall.y + wall.height);
-        wallGradient.addColorStop(0, '#b4b1a7');
-        wallGradient.addColorStop(1, '#6c706a');
-        context.fillStyle = wallGradient;
-        context.fillRect(wall.x, wall.y, wall.width, wall.height);
-        context.fillStyle = 'rgba(255,255,255,.18)';
-        context.fillRect(wall.x + 2, wall.y + 2, Math.max(0, wall.width - 4), 2);
-      }
-      context.shadowColor = 'transparent';
-
-      if (!stateRef.current.paused) {
+      if (!state.paused) {
         let x = 0;
         let y = 0;
         if (keys.has('w') || keys.has('arrowup')) y -= 1;
@@ -248,90 +679,100 @@ export function GameCanvas({ floorIndex, paused, showPhysics, nightVision, onFlo
         if (keys.has('d') || keys.has('arrowright')) x += 1;
         player.moving = Boolean(x || y);
         const length = Math.hypot(x, y) || 1;
-        const velocity = { x: x / length * 148, y: y / length * 148 };
-        if (Math.abs(x) > Math.abs(y)) player.directionRow = x > 0 ? 1 : 3;
-        else if (y) player.directionRow = y > 0 ? 2 : 0;
+        const velocity = { x: x / length * 145, y: y / length * 145 };
+        if (player.moving) player.facing = Math.atan2(velocity.x, velocity.y);
         const proposed = { x: player.x + velocity.x * dt, y: player.y + velocity.y * dt };
         const hitsWall = floor.walls.some((wall) => circleHitsRect(proposed, player.radius, wall));
+        const hitsProp = floor.props.some((prop) => {
+          if (!prop.collider) return false;
+          const offset = memory.offsets[prop.id] ?? { x: 0, y: 0 };
+          return circleHitsRect(proposed, player.radius, {
+            id: prop.id,
+            x: prop.position.x + offset.x - prop.collider.width / 2,
+            y: prop.position.y + offset.y - prop.collider.height / 2,
+            width: prop.collider.width,
+            height: prop.collider.height,
+          });
+        });
         let pushed = false;
-        for (const item of doors) {
-          if (player.moving) pushed = pushDoor(item, proposed, velocity) || pushed;
-          updateDoor(item, dt);
+        for (const door of doors) {
+          if (player.moving) pushed = pushDoor(door, proposed, velocity) || pushed;
+          updateDoor(door, dt);
+          memory.doors[door.id] = door.angle;
+          const group = doorGroups.get(door.id);
+          if (group) group.rotation.y = -door.angle;
         }
-        const blockedDoor = doors.some((item) => pointToDoor(proposed, item).distance < player.radius + item.width / 2 - 1);
-        if (!hitsWall && (!blockedDoor || pushed)) {
+        const blockedDoor = doors.some((door) => pointToDoor(proposed, door).distance < player.radius + door.width / 2 - 1);
+        if (!hitsWall && !hitsProp && (!blockedDoor || pushed)) {
           player.x = proposed.x;
           player.y = proposed.y;
         }
-        if (pushed) stateRef.current.onStatus('人物接触门板：已根据力臂计算门轴扭矩');
-      }
-
-      doors.forEach(drawDoor);
-      floor.occupants.forEach(drawOccupant);
-
-      context.save();
-      context.translate(player.x, player.y);
-      context.shadowColor = 'rgba(0,0,0,.55)';
-      context.shadowBlur = 12;
-      context.shadowOffsetY = 7;
-      if (operatorAtlas.complete) {
-        const frameWidth = operatorAtlas.naturalWidth / 4;
-        const frameHeight = operatorAtlas.naturalHeight / 4;
-        const frame = player.moving ? Math.floor(now / 125) % 4 : 0;
-        context.drawImage(operatorAtlas, frame * frameWidth, player.directionRow * frameHeight, frameWidth, frameHeight, -31, -38, 62, 76);
       } else {
-        context.fillStyle = '#182b23';
-        context.beginPath();
-        context.arc(0, 0, player.radius, 0, Math.PI * 2);
-        context.fill();
+        for (const door of doors) {
+          updateDoor(door, dt);
+          memory.doors[door.id] = door.angle;
+          const group = doorGroups.get(door.id);
+          if (group) group.rotation.y = -door.angle;
+        }
       }
-      if (stateRef.current.showPhysics) {
-        context.shadowColor = 'transparent';
-        context.strokeStyle = '#5df3a5';
-        context.lineWidth = 1.5;
-        context.beginPath();
-        context.arc(0, 0, player.radius, 0, Math.PI * 2);
-        context.stroke();
-      }
-      context.restore();
 
-      const darkness = context.createRadialGradient(player.x, player.y, 55, player.x, player.y, stateRef.current.nightVision ? 450 : 255);
-      if (stateRef.current.nightVision) {
-        darkness.addColorStop(0, 'rgba(8,33,18,.02)');
-        darkness.addColorStop(.65, 'rgba(5,25,13,.18)');
-        darkness.addColorStop(1, 'rgba(1,9,4,.42)');
+      const playerWorld = toWorld(player);
+      playerRig.root.position.set(playerWorld.x, 0, playerWorld.z);
+      playerRig.root.rotation.y = player.facing;
+      animateRig(playerRig, elapsed * 8, player.moving);
+      const forward = new THREE.Vector3(Math.sin(player.facing), 0, Math.cos(player.facing));
+      flashlight.position.copy(playerRig.root.position).add(new THREE.Vector3(0, 1.42, 0));
+      flashlightTarget.position.copy(playerRig.root.position).addScaledVector(forward, 4.6).add(new THREE.Vector3(0, 0.52, 0));
+      flashlight.intensity = state.nightVision ? 11 : 34;
+      residentRigs.forEach(({ rig, behavior, phase }) => {
+        const active = behavior === 'patrol' || behavior === 'investigate';
+        animateRig(rig, elapsed * 3.2 + phase, active, 1);
+        if (active) rig.root.position.y = Math.sin(elapsed * 2.4 + phase) * 0.018;
+      });
+
+      if (state.cameraMode === 'follow') {
+        const desired = playerRig.root.position.clone().addScaledVector(forward, -4.2).add(new THREE.Vector3(0, 6.2, 0));
+        camera.position.lerp(desired, 1 - Math.pow(0.002, dt));
+        const target = playerRig.root.position.clone().add(new THREE.Vector3(0, 0.85, 0));
+        camera.lookAt(target);
       } else {
-        darkness.addColorStop(0, 'rgba(0,0,0,.02)');
-        darkness.addColorStop(.52, 'rgba(0,0,0,.37)');
-        darkness.addColorStop(1, 'rgba(0,0,0,.82)');
-      }
-      context.fillStyle = darkness;
-      context.fillRect(0, 0, buildingScene.world.width, buildingScene.world.height);
-      if (stateRef.current.nightVision) {
-        context.fillStyle = 'rgba(48,143,78,.14)';
-        context.fillRect(0, 0, buildingScene.world.width, buildingScene.world.height);
+        controls.update();
       }
 
+      renderer.domElement.dataset.playerX = player.x.toFixed(1);
+      renderer.domElement.dataset.playerY = player.y.toFixed(1);
+      renderer.domElement.dataset.floor = floor.id;
+      renderer.domElement.dataset.moving = String(player.moving);
+      renderer.domElement.dataset.camera = state.cameraMode;
+      renderer.domElement.dataset.renderer = 'three-webgl';
+      renderer.domElement.dataset.interactions = JSON.stringify({ ...memory.props, ...memory.parts });
+      renderer.render(scene, camera);
       frameRequest = requestAnimationFrame(render);
     };
-
-    const resize = () => {
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.max(1, Math.floor(canvas.clientWidth * dpr));
-      canvas.height = Math.max(1, Math.floor(canvas.clientHeight * dpr));
-    };
-    resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
     frameRequest = requestAnimationFrame(render);
+
     return () => {
       cancelAnimationFrame(frameRequest);
       observer.disconnect();
+      controls.dispose();
       window.removeEventListener('keydown', keyDown);
       window.removeEventListener('keyup', keyUp);
       keys.clear();
+      scene.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          object.geometry.dispose();
+          const disposeMaterial = (entry: THREE.Material) => {
+            if (entry instanceof THREE.MeshStandardMaterial) entry.map?.dispose();
+            entry.dispose();
+          };
+          if (Array.isArray(object.material)) object.material.forEach(disposeMaterial);
+          else disposeMaterial(object.material);
+        }
+      });
+      renderer.dispose();
+      renderer.domElement.remove();
     };
   }, [floorIndex]);
 
-  return <canvas ref={canvasRef} className="game-canvas" aria-label="可玩的原创四层战术住宅俯视场景。WASD 移动，E 开门，R/F 上下楼。" />;
+  return <div ref={mountRef} className="game-viewport" />;
 }
