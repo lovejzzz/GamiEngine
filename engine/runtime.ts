@@ -1,5 +1,11 @@
 import type { RectSpec, Vec2 } from './types';
 
+export type CircleCollider = {
+  id: string;
+  position: Vec2;
+  radius: number;
+};
+
 export type RuntimeDoor = {
   id: string;
   name: string;
@@ -22,6 +28,73 @@ export function circleHitsRect(point: Vec2, radius: number, rect: RectSpec) {
   const dx = point.x - nearX;
   const dy = point.y - nearY;
   return dx * dx + dy * dy < radius * radius;
+}
+
+export function circleHitsCircle(a: Vec2, aRadius: number, b: Vec2, bRadius: number) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  const radius = aRadius + bRadius;
+  return dx * dx + dy * dy < radius * radius;
+}
+
+export function segmentHitsRect(from: Vec2, to: Vec2, rect: RectSpec) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  let near = 0;
+  let far = 1;
+  for (const [origin, delta, min, max] of [
+    [from.x, dx, rect.x, rect.x + rect.width],
+    [from.y, dy, rect.y, rect.y + rect.height],
+  ] as const) {
+    if (Math.abs(delta) < 1e-8) {
+      if (origin < min || origin > max) return false;
+      continue;
+    }
+    const first = (min - origin) / delta;
+    const second = (max - origin) / delta;
+    near = Math.max(near, Math.min(first, second));
+    far = Math.min(far, Math.max(first, second));
+    if (near > far) return false;
+  }
+  return far > 0.03 && near < 0.97;
+}
+
+export function interactionScore(
+  player: Vec2,
+  facing: number,
+  target: Vec2,
+  blockers: RectSpec[],
+  maxDistance = 92,
+  minimumFacingDot = -0.05,
+) {
+  const dx = target.x - player.x;
+  const dy = target.y - player.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance > maxDistance || distance < 1e-6) return null;
+  const forward = { x: Math.sin(facing), y: Math.cos(facing) };
+  const facingDot = (dx * forward.x + dy * forward.y) / distance;
+  if (facingDot < minimumFacingDot) return null;
+  if (blockers.some((rect) => segmentHitsRect(player, target, rect))) return null;
+  return distance + (1 - facingDot) * 24;
+}
+
+export function moveCircleWithSliding(
+  origin: Vec2,
+  delta: Vec2,
+  radius: number,
+  rects: RectSpec[],
+  circles: CircleCollider[] = [],
+) {
+  const blocked = (point: Vec2) =>
+    rects.some((rect) => circleHitsRect(point, radius, rect)) ||
+    circles.some((circle) => circleHitsCircle(point, radius, circle.position, circle.radius));
+  const full = { x: origin.x + delta.x, y: origin.y + delta.y };
+  if (!blocked(full)) return full;
+  const xOnly = { x: full.x, y: origin.y };
+  if (!blocked(xOnly)) return xOnly;
+  const yOnly = { x: origin.x, y: full.y };
+  if (!blocked(yOnly)) return yOnly;
+  return { ...origin };
 }
 
 export function pointToDoor(point: Vec2, door: RuntimeDoor) {

@@ -20,9 +20,11 @@ Version 2 declares the renderer and the role of each generated image:
 
 ### Simulation
 
-`engine/runtime.ts` contains deterministic, renderer-independent collision and hinge math. Runtime door state stores angle, angular velocity, limits, and optional motor target. The scene component owns a persistent memory record per floor for door angles, parent prop states, child states, and moved-object offsets.
+`engine/runtime.ts` contains deterministic, renderer-independent rectangle/circle collision, axis sliding, line-of-sight targeting, and hinge math. Runtime door state stores angle, angular velocity, limits, and optional motor target. The scene component owns a persistent memory record per floor for door angles, parent prop states, child states, moved-object offsets, and occupant navigation positions.
 
-Compound interactions are addressed by `parentId:partId`. The input system selects one nearest candidate and mutates only that record. Streaming a floor back in rebuilds geometry and then reapplies saved transforms and visibility.
+Compound interactions are addressed by `parentId:partId`. The input system scores one target by distance and facing, rejects targets occluded by walls or fixtures, displays the selected target, and serializes operations through an actor-level busy interval. Streaming a floor back in rebuilds geometry and then reapplies saved transforms and visibility.
+
+Collision is declared independently from appearance. Walls and fixed room details use rectangles; movable props carry their collider with their saved offset; standing occupants use persistent circles; stairs remain explicit pass-through portal zones.
 
 ### Rendering
 
@@ -32,7 +34,7 @@ The cutaway keeps the south wall low, side walls medium, and internal walls read
 
 ### Characters
 
-The current demo builds articulated procedural rigs with torso, head, opposing arm/leg pivots, equipment, idle poses, walk cycles, and behavior variants. The existing 4×4 generated sprite atlas remains a declared runtime fallback. Production characters can move to skinned glTF clips without changing occupant IDs or AI behavior.
+The current demo builds articulated two-joint procedural limbs, blends idle/walk weights, and drives patrol/investigate clips from real waypoint movement. Sleeping and hiding are separate poses. Every character recipe carries a shared skeleton ID plus an implemented/required clip inventory. The existing 4×4 generated sprite atlas remains a declared runtime fallback. Production characters can move to skinned glTF clips without changing occupant IDs or AI behavior.
 
 ## Asset production pipeline
 
@@ -51,7 +53,7 @@ The current demo builds articulated procedural rigs with torso, head, opposing a
 - Add normal/roughness maps and environment lighting without changing asset roles.
 - Move floor memory into a serializable save service.
 - Replace the lightweight circle/rectangle solver with a physics adapter while preserving stable body IDs.
-- Add navigation meshes and behavior trees keyed by occupant IDs.
+- Replace waypoint patrols with navigation meshes and behavior trees keyed by occupant IDs.
 - Pool shared geometries/materials and use instancing for repeated props.
 - Add accessibility input remapping and gamepad controls.
 

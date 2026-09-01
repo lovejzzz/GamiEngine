@@ -30,6 +30,9 @@ export type InteractionProfile = {
   states: InteractionState[];
   motion: 'none' | 'swap' | 'translate' | 'hinge' | 'portal';
   exclusiveGroup?: string;
+  maxDistance?: number;
+  facingDot?: number;
+  durationMs?: number;
 };
 
 export type AssetRecipe = {
@@ -72,6 +75,16 @@ export type AssetRecipe = {
     meshSource?: string;
     independentlyModeledParts?: string[];
   };
+  animation?: {
+    skeleton: string;
+    rootMotion: 'engine' | 'clip';
+    clips: Array<{
+      id: string;
+      loop: boolean;
+      duration: number;
+      status: 'implemented' | 'required';
+    }>;
+  };
   interaction?: InteractionProfile;
 };
 
@@ -112,6 +125,12 @@ export type OccupantSpec = {
   role: 'civilian' | 'unknown' | 'hostile';
   behavior: 'sleeping' | 'hiding' | 'patrol' | 'frozen' | 'investigate';
   asset: string;
+  collider?: { radius: number; blocksMovement: boolean };
+  navigation?: {
+    speed: number;
+    mode: 'loop' | 'ping-pong';
+    waypoints: Vec2[];
+  };
 };
 
 export type LightSpec = {
@@ -136,7 +155,7 @@ export type PropSpec = {
   position: Vec2;
   size: Vec2;
   rotation?: number;
-  collider?: { width: number; height: number };
+  collider?: { width: number; height: number; blocksMovement?: boolean };
   interaction?: InteractionProfile;
   parts?: PropPartSpec[];
 };
@@ -148,6 +167,7 @@ export type FloorSpec = {
   subtitle: string;
   rooms: RoomSpec[];
   walls: RectSpec[];
+  obstacles?: RectSpec[];
   doors: DoorSpec[];
   occupants: OccupantSpec[];
   props: PropSpec[];

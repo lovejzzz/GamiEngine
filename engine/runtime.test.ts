@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { circleHitsRect, nearestFloorIndex, pointToDoor, pushDoor, updateDoor, type RuntimeDoor } from './runtime';
+import {
+  circleHitsCircle,
+  circleHitsRect,
+  interactionScore,
+  moveCircleWithSliding,
+  nearestFloorIndex,
+  pointToDoor,
+  pushDoor,
+  segmentHitsRect,
+  updateDoor,
+  type RuntimeDoor,
+} from './runtime';
 
 const makeDoor = (): RuntimeDoor => ({
   id: 'door',
@@ -42,5 +53,19 @@ describe('runtime geometry', () => {
     expect(nearestFloorIndex(0, -1, 4)).toBe(0);
     expect(nearestFloorIndex(1, 1, 4)).toBe(2);
     expect(nearestFloorIndex(3, 1, 4)).toBe(3);
+  });
+
+  it('blocks actor circles and slides along a free axis', () => {
+    expect(circleHitsCircle({ x: 0, y: 0 }, 10, { x: 18, y: 0 }, 9)).toBe(true);
+    const wall = { id: 'wall', x: 10, y: 10, width: 20, height: 20 };
+    expect(moveCircleWithSliding({ x: 0, y: 20 }, { x: 12, y: 8 }, 5, [wall])).toEqual({ x: 0, y: 28 });
+  });
+
+  it('rejects interactions behind the actor or through a wall', () => {
+    const wall = { id: 'wall', x: 20, y: -5, width: 5, height: 10 };
+    expect(segmentHitsRect({ x: 0, y: 0 }, { x: 40, y: 0 }, wall)).toBe(true);
+    expect(interactionScore({ x: 0, y: 0 }, Math.PI / 2, { x: 40, y: 0 }, [])).not.toBeNull();
+    expect(interactionScore({ x: 0, y: 0 }, -Math.PI / 2, { x: 40, y: 0 }, [])).toBeNull();
+    expect(interactionScore({ x: 0, y: 0 }, Math.PI / 2, { x: 40, y: 0 }, [wall])).toBeNull();
   });
 });

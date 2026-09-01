@@ -112,8 +112,10 @@ export function GameEngineStudio() {
             <TreeGroup label="CURRENT FLOOR" count={floor.rooms.length}>
               {floor.rooms.map((room) => <TreeItem key={room.id} label={room.name} detail={room.purpose} />)}
             </TreeGroup>
-            <TreeGroup label="PHYSICS" count={floor.walls.length + floor.doors.length}>
+            <TreeGroup label="PHYSICS" count={floor.walls.length + (floor.obstacles?.length ?? 0) + floor.doors.length + floor.props.filter((prop) => prop.collider?.blocksMovement !== false).length + floor.occupants.filter((person) => person.collider?.blocksMovement).length}>
               <TreeItem label="墙体" detail={`${floor.walls.length} static colliders`} />
+              <TreeItem label="固定物" detail={`${floor.obstacles?.length ?? 0} fixture colliders`} />
+              <TreeItem label="家具 / 人物" detail={`${floor.props.filter((prop) => prop.collider?.blocksMovement !== false).length + floor.occupants.filter((person) => person.collider?.blocksMovement).length} dynamic colliders`} />
               <TreeItem label="可推门" detail={`${floor.doors.length} hinge bodies`} accent />
             </TreeGroup>
             <TreeGroup label="INTERACTIVE PROPS" count={floor.props.length}>
@@ -179,6 +181,7 @@ export function GameEngineStudio() {
             </div>
             {selected.referenceStudy && <div className="prompt-preview">学习：{selected.referenceStudy.learn.join(' / ')} · 运行时规则：不直接渲染整图</div>}
             {selected.geometry && <div className="prompt-preview">建模：{selected.geometry.source} · {(selected.geometry.independentlyModeledParts ?? []).join(' / ')}</div>}
+            {selected.animation && <div className="prompt-preview">动画：{selected.animation.skeleton} · {selected.animation.clips.map((clip) => `${clip.id}:${clip.status === 'implemented' ? '✓' : '待做'}`).join(' / ')}</div>}
             {selected.texture && <div className="prompt-preview">贴图：{selected.texture.semantic} · {selected.texture.tileable ? '无缝平铺' : '单次映射'} · {selected.texture.metersPerTile.x}m/块</div>}
             {selected.interaction && <div className="prompt-preview">交互：{selected.interaction.actions.join(' / ')} · {selected.interaction.states.map((state) => state.label).join(' → ')}</div>}
             <div className="prompt-preview">{selected.prompt}</div>

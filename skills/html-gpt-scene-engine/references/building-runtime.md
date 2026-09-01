@@ -13,6 +13,14 @@ Model the building as a graph:
 
 Keep a floor's geometry in local coordinates and preserve actor state when unloading it. Avoid rendering all floors superimposed; select one active floor and optionally show adjacent floors as debug context.
 
+## Collision policy
+
+Inventory collision separately from visuals and interactions. Walls, substantial furniture, movable chairs, and standing occupants are usually blocking bodies; stair portals and rugs are usually pass-through triggers. State-linked parts such as open drawers may need a different shape from their closed state. Move saved colliders with their instance transform and resolve diagonal motion with axis sliding so actors do not stick at corners.
+
+## Collision policy
+
+Inventory collision separately from visuals and interactions. Walls, substantial furniture, movable chairs, and standing occupants are usually blocking bodies; stair portals and rugs are usually pass-through triggers. State-linked parts such as open drawers may need a different shape from their closed state. Move saved colliders with their instance transform and resolve diagonal motion with axis sliding so actors do not stick at corners.
+
 ## Door simulation
 
 For a hinged door, store hinge position, closed angle, min/max angles, width, mass/inertia approximation, angular velocity, damping, optional closer/motor target, and lock state. Contact torque is based on the cross product between hinge-to-contact arm and actor velocity/force. Clamp at angle limits and block passage when the door capsule still intersects the actor.
@@ -35,6 +43,18 @@ Separate:
 - animation clip.
 
 Do not encode “hostile-looking” appearance as role truth. Unknown occupants should become identified through behavior, game rules, or authored state transitions.
+
+Patrol and investigate behaviors require navigation waypoints or a navigation mesh, persistent actor position, collision against props and other actors, and a locomotion clip blended from actual movement speed. An in-place walk cycle is an animation preview, not navigation.
+
+## Interaction targeting
+
+Select one stable target using distance plus facing, reject targets hidden behind blocking walls, and show which target will receive input. Use a short actor-level busy interval for hinged, sliding, searching, or pickup actions. This serializes the actor's operation without forcing sibling parts to share one state; multiple cabinet children may remain independently open after separate completed actions.
+
+Patrol and investigate behaviors require navigation waypoints or a navigation mesh, persistent actor position, collision against props and other actors, and a locomotion clip blended from actual movement speed. An in-place walk cycle is an animation preview, not navigation.
+
+## Interaction targeting
+
+Select one stable target using distance plus facing, reject targets hidden behind blocking walls, and show which target will receive input. Use a short actor-level busy interval for hinged, sliding, searching, or pickup actions. This serializes the actor's operation without forcing sibling parts to share one state; multiple cabinet children may remain independently open after separate completed actions.
 
 ## Originality when using references
 

@@ -80,6 +80,7 @@ button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 .canvas-wrap { position: relative; min-height: 0; overflow: hidden; background: #080c0a; }
 .game-viewport, .game-canvas { width: 100%; height: 100%; display: block; }
 .game-viewport { position: absolute; inset: 0; }
+.interaction-prompt { position: absolute; left: 50%; top: 72px; translate: -50% 0; z-index: 4; padding: 7px 10px; border: 1px solid rgba(93,243,165,.58); background: rgba(7,14,10,.88); color: #9ff7c4; font: 600 10px/1.2 var(--font-mono, monospace); letter-spacing: .06em; pointer-events: none; box-shadow: 0 0 18px rgba(93,243,165,.09); }
 .floor-badge { position: absolute; top: 14px; left: 14px; display: flex; align-items: center; gap: 9px; border: 1px solid rgba(92,116,101,.65); background: rgba(7,12,9,.78); padding: 7px 10px; backdrop-filter: blur(10px); }
 .floor-badge span { font: 700 12px var(--font-mono); color: var(--green); }
 .floor-badge p { margin: 0; font-size: 9px; color: #9aa69e; }

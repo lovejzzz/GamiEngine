@@ -17,6 +17,10 @@ Build a playable scene system, not a flattened picture. GPT-generated pixels mus
 - Use one visual consistency lock across an asset family: projection, texel density, palette, material light, edge treatment, and negative constraints.
 - Treat occupant role and visible appearance separately. “Civilian”, “unknown”, and “hostile” are runtime states, not assumptions inferred from clothing.
 - Classify interaction before generating any prop. Record actions, independent state IDs, motion model, collision/occlusion changes, and the asset needed for every visually distinct state.
+- Classify collision independently from interaction and visibility. Every substantial body needs an explicit `blocking`, `trigger`, or `pass-through` policy; never assume a table, chair, occupant, or generated silhouette is non-blocking because it lacks an interaction.
+- Gate interactions by distance, actor facing, and wall/door visibility. Give long actions a busy interval and visible target feedback so input spam cannot make one actor operate several parts simultaneously.
+- Classify collision independently from interaction and visibility. Every substantial body needs an explicit `blocking`, `trigger`, or `pass-through` policy; never assume a table, chair, occupant, or generated silhouette is non-blocking because it lacks an interaction.
+- Gate interactions by distance, actor facing, and wall/door visibility. Give long actions a busy interval and visible target feedback so input spam cannot make one actor operate several parts simultaneously.
 - Decompose compound props into independently addressable child parts. A kitchen is a cabinet carcass plus individual doors and drawers; interacting with one child must never implicitly open every sibling.
 - Do not merge independently movable objects into one bitmap. Tables and chairs, shelves and loose boxes, or a bed and an under-bed drawer require separate instances when gameplay can move or reveal them.
 - In 3D, classify every generated image as either `reference-study`, `runtime-texture`, or an explicit `runtime-sprite`. A reference study teaches silhouette, proportion, construction, material zones, palette, and wear; never render it directly as 3D geometry.
@@ -44,6 +48,8 @@ Sprite-based walking characters need real frame assets. A static image with CSS 
 - Derive an atlas or layered rig from one approved character master. Do not generate every frame independently from unrelated text prompts; identity and equipment will drift.
 - Store atlas columns, rows, direction order, FPS, pivot, and physical footprint in the manifest.
 - For a 3D rig, store skeleton/part IDs, clips, duration or FPS, root-motion policy, and collider footprint. At minimum animate opposing arms/legs for locomotion and provide a stable idle pose.
+- Blend into and out of locomotion instead of snapping joint angles. A patrol clip is valid only when the actor changes navigation position; sleeping, hiding, sitting, pushing, and searching need distinct poses or clips rather than a rotated standing cycle.
+- Blend into and out of locomotion instead of snapping joint angles. A patrol clip is valid only when the actor changes navigation position; sleeping, hiding, sitting, pushing, and searching need distinct poses or clips rather than a rotated standing cycle.
 - A visible checkerboard is not proof of transparency. Verify PNG alpha. Fractional cell dimensions are allowed only if the renderer slices with floating-point source rectangles; otherwise pad or regenerate the atlas.
 
 ## Quality bar
@@ -52,5 +58,7 @@ Judge two independent outcomes:
 
 - Visual: consistent projection, scale, palette, alpha edges where used, coherent 3D silhouette and proportions, material response, and no baked effects that conflict at runtime.
 - Simulation: all spaces are traversable as intended; walls and doors block correctly; door front/back choice follows camera/side; floor transitions preserve state; occupants and animation remain data-driven.
+- Collision audit: walk directly into every substantial prop and occupant, then move diagonally along its edge. Verify blocking bodies stop overlap, pass-through portals remain usable, and moving props carry their colliders with their saved transform.
+- Collision audit: walk directly into every substantial prop and occupant, then move diagonally along its edge. Verify blocking bodies stop overlap, pass-through portals remain usable, and moving props carry their colliders with their saved transform.
 
 Do not reproduce a copyrighted game level room-for-room when a user gives it as a reference. Extract the desired design qualities and create an original layout, cast, and asset identity.

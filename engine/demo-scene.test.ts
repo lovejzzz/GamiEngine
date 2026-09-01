@@ -52,4 +52,29 @@ describe('Gami Engine demo manifest', () => {
       expect(part.interaction.states.map((state) => state.id)).toContain('open');
     }
   });
+
+  it('declares movement blockers and navigation rather than inferring them from art', () => {
+    const firstFloor = buildingScene.floors[1];
+    for (const id of ['f1-table', 'f1-chair-a', 'f1-chair-b']) {
+      expect(firstFloor.props.find((prop) => prop.id === id)?.collider).toBeTruthy();
+    }
+    for (const occupant of buildingScene.floors.flatMap((floor) => floor.occupants)) {
+      expect(occupant.collider).toBeTruthy();
+      if (occupant.behavior === 'patrol' || occupant.behavior === 'investigate') {
+        expect(occupant.navigation?.waypoints.length).toBeGreaterThan(1);
+        expect(occupant.navigation?.speed).toBeGreaterThan(0);
+      }
+    }
+    expect(buildingScene.floors[0].obstacles?.some((item) => item.id === 'b1-boiler-body')).toBe(true);
+    expect(buildingScene.floors[2].obstacles?.some((item) => item.id === 'f2-nursery-crib')).toBe(true);
+  });
+
+  it('keeps a clip inventory for every articulated character asset', () => {
+    for (const character of buildingScene.assets.filter((asset) => asset.kind === 'character')) {
+      expect(character.animation?.skeleton).toBeTruthy();
+      expect(character.animation?.rootMotion).toBe('engine');
+      expect(character.animation?.clips.some((clip) => clip.id === 'idle' && clip.status === 'implemented')).toBe(true);
+      expect(character.animation?.clips.some((clip) => clip.id === 'walk' && clip.status === 'implemented')).toBe(true);
+    }
+  });
 });

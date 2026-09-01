@@ -32,6 +32,10 @@ Map the materials onto UV-authored geometry. Lighting, cast shadows, fog, night 
 
 Doors rotate around engine hinges, drawers translate along engine axes, and characters use articulated rigs or verified atlases. Save state by `parentId:partId`; rebuilding or streaming a floor must reapply every transform and visibility state without consulting image pixels.
 
+Before producing a character, keep a clip inventory in the asset recipe with a shared skeleton ID, root-motion policy, duration, loop mode, and `implemented` or `required` status. At minimum separate idle and locomotion; add pushing, searching, stairs, crouching, sleeping, hiding, surrendering, or other poses when the scene actually uses them. Reference images define anatomy and costume, not joint tracks.
+
+Before producing a character, keep a clip inventory in the asset recipe with a shared skeleton ID, root-motion policy, duration, loop mode, and `implemented` or `required` status. At minimum separate idle and locomotion; add pushing, searching, stairs, crouching, sleeping, hiding, surrendering, or other poses when the scene actually uses them. Reference images define anatomy and costume, not joint tracks.
+
 ## 5. Validate in play
 
 Walk through the complete space with the actual input scheme. Test collision at corners, pushing both sides of doors, nearest-child selection, one-child-only changes, floor transitions, state restoration, follow/editor cameras, low viewport sizes, missing textures, and console errors. Inspect both visual plausibility and simulation correctness.

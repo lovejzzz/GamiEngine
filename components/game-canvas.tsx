@@ -5,8 +5,18 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildingScene } from '@/engine/demo-scene';
 import { resolveRuntimeSource } from '@/engine/asset-registry';
-import type { FloorSpec, InteractionProfile, PropSpec, RectSpec, Vec2 } from '@/engine/types';
-import { circleHitsRect, nearestFloorIndex, pointToDoor, pushDoor, updateDoor, type RuntimeDoor } from '@/engine/runtime';
+import type { FloorSpec, InteractionProfile, OccupantSpec, PropSpec, RectSpec, Vec2 } from '@/engine/types';
+import {
+  circleHitsRect,
+  interactionScore,
+  moveCircleWithSliding,
+  nearestFloorIndex,
+  pointToDoor,
+  pushDoor,
+  updateDoor,
+  type CircleCollider,
+  type RuntimeDoor,
+} from '@/engine/runtime';
 
 export type CameraMode = 'editor' | 'follow';
 
@@ -22,10 +32,24 @@ type Props = {
 
 type Rig = {
   root: THREE.Group;
+  visual: THREE.Group;
+  torso: THREE.Object3D;
   leftArm: THREE.Group;
   rightArm: THREE.Group;
+  leftForearm: THREE.Group;
+  rightForearm: THREE.Group;
   leftLeg: THREE.Group;
   rightLeg: THREE.Group;
+  leftShin: THREE.Group;
+  rightShin: THREE.Group;
+  locomotionWeight: number;
+};
+
+type OccupantMemory = {
+  position: Vec2;
+  facing: number;
+  waypointIndex: number;
+  waypointDirection: 1 | -1;
 };
 
 type FloorMemory = {
@@ -33,6 +57,7 @@ type FloorMemory = {
   props: Record<string, string>;
   parts: Record<string, string>;
   offsets: Record<string, Vec2>;
+  occupants: Record<string, OccupantMemory>;
 };
 
 const keys = new Set<string>();
@@ -48,11 +73,19 @@ const toWorld = (point: Vec2) => new THREE.Vector3(
 function makeMemory(floor: FloorSpec): FloorMemory {
   const existing = memories.get(floor.id);
   if (existing) return existing;
-  const memory: FloorMemory = { doors: {}, props: {}, parts: {}, offsets: {} };
+  const memory: FloorMemory = { doors: {}, props: {}, parts: {}, offsets: {}, occupants: {} };
   for (const door of floor.doors) memory.doors[door.id] = door.closedAngle;
   for (const prop of floor.props) {
     if (prop.interaction) memory.props[prop.id] = prop.interaction.defaultState;
     for (const part of prop.parts ?? []) memory.parts[`${prop.id}:${part.id}`] = part.interaction.defaultState;
+  }
+  for (const occupant of floor.occupants) {
+    memory.occupants[occupant.id] = {
+      position: { ...occupant.position },
+      facing: occupant.facing,
+      waypointIndex: occupant.navigation?.waypoints.length && occupant.navigation.waypoints.length > 1 ? 1 : 0,
+      waypointDirection: 1,
+    };
   }
   memories.set(floor.id, memory);
   return memory;
@@ -95,6 +128,10 @@ export function GameCanvas({
     renderer.domElement.tabIndex = 0;
     renderer.domElement.setAttribute('aria-label', 'Gami Engine 3D 房屋演示。WASD 移动，E 开门，Q 互动，R/F 上下楼。');
     mount.appendChild(renderer.domElement);
+    const interactionPrompt = document.createElement('div');
+    interactionPrompt.className = 'interaction-prompt';
+    interactionPrompt.hidden = true;
+    mount.appendChild(interactionPrompt);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -148,8 +185,19 @@ export function GameCanvas({
     scene.add(worldRoot);
     const propGroups = new Map<string, THREE.Group>();
     const propParts = new Map<string, THREE.Object3D>();
+    const partBases = new Map<string, { position: THREE.Vector3; rotationY: number }>();
+    const bedDrawers = new Map<string, { object: THREE.Object3D; closedZ: number; openZ: number }>();
     const debugGroup = new THREE.Group();
     worldRoot.add(debugGroup);
+    const interactionMarker = new THREE.Mesh(
+      new THREE.RingGeometry(0.25, 0.31, 32),
+      new THREE.MeshBasicMaterial({ color: 0x73f6ad, transparent: true, opacity: 0.82, side: THREE.DoubleSide, depthTest: false }),
+    );
+    interactionMarker.rotation.x = -Math.PI / 2;
+    interactionMarker.position.y = 0.035;
+    interactionMarker.renderOrder = 20;
+    interactionMarker.visible = false;
+    worldRoot.add(interactionMarker);
 
     const addBox = (
       parent: THREE.Object3D,
@@ -218,6 +266,7 @@ export function GameCanvas({
       worldRoot.add(wallMesh);
       addColliderOutline(wall, wallHeight + 0.07);
     }
+    for (const obstacle of floor.obstacles ?? []) addColliderOutline(obstacle, 0.92, 0xe39a62);
 
     const doors: RuntimeDoor[] = floor.doors.map((spec) => ({
       id: spec.id,
@@ -270,6 +319,7 @@ export function GameCanvas({
       const drawer = addBox(group, [width * 0.58, 0.18, depth * 0.32], [0, 0.15, depth * 0.23], walnutMaterial);
       drawer.visible = false;
       propParts.set(`${prop.id}:searched`, drawer);
+      bedDrawers.set(prop.id, { object: drawer, closedZ: drawer.position.z, openZ: drawer.position.z + depth * 0.48 });
       return group;
     };
 
@@ -337,6 +387,7 @@ export function GameCanvas({
           addBox(hinge, [0.035, 0.035, 0.075], [0.29, 0, 0.02], brassMaterial);
           group.add(hinge);
           propParts.set(id, hinge);
+          partBases.set(id, { position: hinge.position.clone(), rotationY: hinge.rotation.y });
         } else {
           const drawer = new THREE.Group();
           drawer.position.set(local.x, 0.56, local.z);
@@ -344,6 +395,7 @@ export function GameCanvas({
           addBox(drawer, [0.46, 0.22, 0.06], [0, 0, 0.5], sageMaterial);
           group.add(drawer);
           propParts.set(id, drawer);
+          partBases.set(id, { position: drawer.position.clone(), rotationY: drawer.rotation.y });
         }
       }
       return group;
@@ -375,6 +427,18 @@ export function GameCanvas({
       }
     }
 
+    const propColliderRects = (blockingOnly = true): RectSpec[] => floor.props.flatMap((prop) => {
+      if (!prop.collider || (blockingOnly && prop.collider.blocksMovement === false)) return [];
+      const offset = memory.offsets[prop.id] ?? { x: 0, y: 0 };
+      return [{
+        id: prop.id,
+        x: prop.position.x + offset.x - prop.collider.width / 2,
+        y: prop.position.y + offset.y - prop.collider.height / 2,
+        width: prop.collider.width,
+        height: prop.collider.height,
+      }];
+    });
+
     // Re-apply engine-owned save state after a streamed floor rebuild. Generated
     // reference images never carry interaction state themselves.
     for (const prop of floor.props) {
@@ -384,15 +448,18 @@ export function GameCanvas({
       const bedDrawer = propParts.get(`${prop.id}:searched`);
       if (bedDrawer) {
         bedDrawer.visible = propState === 'searched';
-        bedDrawer.position.z = propState === 'searched' ? 0.82 : 0.23;
+        const binding = bedDrawers.get(prop.id);
+        if (binding) bedDrawer.position.z = propState === 'searched' ? binding.openZ : binding.closedZ;
       }
       for (const partSpec of prop.parts ?? []) {
         const id = `${prop.id}:${partSpec.id}`;
         const object = propParts.get(id);
         if (!object) continue;
         const state = memory.parts[id] ?? partSpec.interaction.defaultState;
-        if (partSpec.interaction.motion === 'hinge') object.rotation.y = state === 'open' ? -1.08 : 0;
-        if (partSpec.interaction.motion === 'translate' && state === 'open') object.position.z += 0.46;
+        const base = partBases.get(id);
+        if (!base) continue;
+        if (partSpec.interaction.motion === 'hinge') object.rotation.y = base.rotationY + (state === 'open' ? -1.08 : 0);
+        if (partSpec.interaction.motion === 'translate') object.position.z = base.position.z + (state === 'open' ? 0.46 : 0);
       }
     }
 
@@ -437,36 +504,50 @@ export function GameCanvas({
 
     const makeRig = (kind: 'operator' | 'resident', tint = 0x7a756c): Rig => {
       const root = new THREE.Group();
+      const visual = new THREE.Group();
+      root.add(visual);
       const cloth = kind === 'operator' ? tacticalMaterial : material(tint, undefined, 0.92);
-      const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.21, 0.34, 7, 14), cloth);
-      torso.scale.set(0.92, 1, 0.72);
-      torso.position.y = 1.12;
-      root.add(torso);
+      const trouser = kind === 'operator' ? tacticalMaterial : material(0x4b504d, undefined, 0.95);
+      const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.31, 7, 14), cloth);
+      torso.scale.set(0.95, 1, 0.68);
+      torso.position.y = 1.14;
+      visual.add(torso);
       const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 20, 16), material(0xb18d70, undefined, 0.92));
-      head.position.y = 1.52;
-      head.castShadow = true;
-      root.add(head);
+      head.position.y = 1.53;
+      visual.add(head);
       const hair = new THREE.Mesh(new THREE.SphereGeometry(0.153, 20, 8, 0, Math.PI * 2, 0, Math.PI * 0.48), material(kind === 'operator' ? 0x252b28 : 0x40372f, undefined, 0.92));
-      hair.position.y = 1.535;
-      root.add(hair);
-      const createLimb = (x: number, y: number, limbMaterial: THREE.Material, length = 0.54) => {
-        const pivot = new THREE.Group();
-        pivot.position.set(x, y, 0);
-        const limb = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, Math.max(0.12, length - 0.13), 5, 10), limbMaterial);
-        limb.position.y = -length / 2;
-        limb.castShadow = true;
-        limb.receiveShadow = true;
-        pivot.add(limb);
-        root.add(pivot);
-        return pivot;
+      hair.position.y = 1.545;
+      visual.add(hair);
+
+      const createJointedLimb = (
+        x: number,
+        y: number,
+        limbMaterial: THREE.Material,
+        upperLength: number,
+        lowerLength: number,
+        radius: number,
+      ) => {
+        const upper = new THREE.Group();
+        upper.position.set(x, y, 0);
+        const upperMesh = new THREE.Mesh(new THREE.CapsuleGeometry(radius, Math.max(0.08, upperLength - radius * 2), 5, 10), limbMaterial);
+        upperMesh.position.y = -upperLength / 2;
+        upper.add(upperMesh);
+        const lower = new THREE.Group();
+        lower.position.y = -upperLength;
+        const lowerMesh = new THREE.Mesh(new THREE.CapsuleGeometry(radius * 0.92, Math.max(0.08, lowerLength - radius * 1.84), 5, 10), limbMaterial);
+        lowerMesh.position.y = -lowerLength / 2;
+        lower.add(lowerMesh);
+        upper.add(lower);
+        visual.add(upper);
+        return { upper, lower };
       };
-      const leftArm = createLimb(-0.27, 1.3, cloth, 0.5);
-      const rightArm = createLimb(0.27, 1.3, cloth, 0.5);
-      const leftLeg = createLimb(-0.11, 0.82, kind === 'operator' ? tacticalMaterial : material(0x4b504d, undefined, 0.95), 0.7);
-      const rightLeg = createLimb(0.11, 0.82, kind === 'operator' ? tacticalMaterial : material(0x4b504d, undefined, 0.95), 0.7);
+      const leftArmRig = createJointedLimb(-0.25, 1.31, cloth, 0.27, 0.25, 0.06);
+      const rightArmRig = createJointedLimb(0.25, 1.31, cloth, 0.27, 0.25, 0.06);
+      const leftLegRig = createJointedLimb(-0.1, 0.91, trouser, 0.34, 0.34, 0.068);
+      const rightLegRig = createJointedLimb(0.1, 0.91, trouser, 0.34, 0.34, 0.068);
       if (kind === 'operator') {
-        addBox(root, [0.42, 0.34, 0.12], [0, 1.12, 0.16], darkMetalMaterial);
-        addBox(root, [0.1, 0.95, 0.1], [0.24, 1.12, 0.22], darkMetalMaterial);
+        addBox(visual, [0.42, 0.34, 0.12], [0, 1.12, 0.16], darkMetalMaterial);
+        addBox(visual, [0.09, 0.92, 0.09], [0.23, 1.08, 0.22], darkMetalMaterial);
       }
       root.traverse((object) => {
         if (object instanceof THREE.Mesh) {
@@ -474,26 +555,71 @@ export function GameCanvas({
           object.receiveShadow = true;
         }
       });
-      return { root, leftArm, rightArm, leftLeg, rightLeg };
+      return {
+        root,
+        visual,
+        torso,
+        leftArm: leftArmRig.upper,
+        rightArm: rightArmRig.upper,
+        leftForearm: leftArmRig.lower,
+        rightForearm: rightArmRig.lower,
+        leftLeg: leftLegRig.upper,
+        rightLeg: rightLegRig.upper,
+        leftShin: leftLegRig.lower,
+        rightShin: rightLegRig.lower,
+        locomotionWeight: 0,
+      };
     };
 
     const playerRig = makeRig('operator');
     const player = { ...floor.spawn, radius: 15, moving: false, facing: Math.PI };
     playerRig.root.position.copy(toWorld(player));
     worldRoot.add(playerRig.root);
-    const residentRigs: Array<{ rig: Rig; behavior: FloorSpec['occupants'][number]['behavior']; phase: number }> = [];
+    type ResidentRuntime = {
+      rig: Rig;
+      spec: OccupantSpec;
+      state: OccupantMemory;
+      phase: number;
+      moving: boolean;
+      colliderOutline?: THREE.LineLoop;
+    };
+    const residentRigs: ResidentRuntime[] = [];
     floor.occupants.forEach((occupant, index) => {
-      const palette = [0x77766e, 0x666f75, 0x7b665d, 0x59665c];
+      const palette = [0x77766e, 0x66747b, 0x7b665d, 0x59665c];
       const rig = makeRig('resident', palette[index % palette.length]);
-      rig.root.position.copy(toWorld(occupant.position));
-      rig.root.rotation.y = -occupant.facing;
+      const actorState = memory.occupants[occupant.id];
+      rig.root.position.copy(toWorld(actorState.position));
+      rig.root.rotation.y = actorState.facing;
       if (occupant.behavior === 'sleeping') {
-        rig.root.rotation.x = Math.PI / 2;
-        rig.root.position.y = 0.55;
+        rig.root.rotation.x = -Math.PI / 2;
+        rig.root.position.y = 0.76;
+        rig.leftArm.rotation.z = -0.22;
+        rig.rightArm.rotation.z = 0.22;
       }
-      if (occupant.behavior === 'hiding') rig.root.scale.setScalar(0.82);
+      if (occupant.behavior === 'hiding') {
+        rig.root.scale.setScalar(0.86);
+        rig.visual.position.y = -0.18;
+        rig.leftLeg.rotation.x = -0.7;
+        rig.rightLeg.rotation.x = -0.7;
+        rig.leftShin.rotation.x = 1.1;
+        rig.rightShin.rotation.x = 1.1;
+      }
       worldRoot.add(rig.root);
-      residentRigs.push({ rig, behavior: occupant.behavior, phase: index * 1.7 });
+      let colliderOutline: THREE.LineLoop | undefined;
+      if (occupant.collider) {
+        const radius = toMeters(occupant.collider.radius);
+        const points = Array.from({ length: 32 }, (_, pointIndex) => {
+          const angle = pointIndex / 32 * Math.PI * 2;
+          return new THREE.Vector3(Math.cos(angle) * radius, 0.055, Math.sin(angle) * radius);
+        });
+        colliderOutline = new THREE.LineLoop(
+          new THREE.BufferGeometry().setFromPoints(points),
+          new THREE.LineBasicMaterial({ color: 0xff8a72, transparent: true, opacity: 0.85 }),
+        );
+        colliderOutline.position.copy(toWorld(actorState.position));
+        debugGroup.add(colliderOutline);
+      }
+      residentRigs.push({ rig, spec: occupant, state: actorState, phase: index * 1.7, moving: false, colliderOutline });
     });
 
     const hemi = new THREE.HemisphereLight(0xbdd2c8, 0x251c16, 1.22);
@@ -508,11 +634,12 @@ export function GameCanvas({
     moon.shadow.camera.bottom = -7;
     scene.add(moon);
     const flashlightTarget = new THREE.Object3D();
-    const flashlight = new THREE.SpotLight(0xdceae3, 34, 9, 0.42, 0.58, 1.35);
+    const flashlight = new THREE.SpotLight(0xdceae3, 16, 8.5, 0.36, 0.92, 1.8);
     flashlight.castShadow = true;
     flashlight.shadow.mapSize.set(1024, 1024);
     flashlight.shadow.camera.near = 0.2;
     flashlight.shadow.camera.far = 10;
+    flashlight.shadow.radius = 3;
     flashlight.target = flashlightTarget;
     scene.add(flashlight, flashlightTarget);
     for (const light of floor.lights) {
@@ -554,10 +681,22 @@ export function GameCanvas({
       const next = profile.states[(index + 1) % profile.states.length];
       stateRecord[id] = next.id;
       if (prop && profile.motion === 'translate') {
-        const dx = position.x - player.x;
-        const dy = position.y - player.y;
+        const pullingChair = prop.asset === 'prop.chair';
+        const dx = pullingChair ? player.x - position.x : position.x - player.x;
+        const dy = pullingChair ? player.y - position.y : position.y - player.y;
         const length = Math.hypot(dx, dy) || 1;
         const offset = next.id === profile.defaultState ? { x: 0, y: 0 } : { x: dx / length * 28, y: dy / length * 28 };
+        if (pullingChair && next.id !== profile.defaultState) {
+          const backedUp = moveCircleWithSliding(
+            player,
+            offset,
+            player.radius,
+            [...floor.walls, ...(floor.obstacles ?? []), ...propColliderRects().filter((rect) => rect.id !== prop.id)],
+            occupantCircles(),
+          );
+          player.x = backedUp.x;
+          player.y = backedUp.y;
+        }
         memory.offsets[id] = offset;
         const group = propGroups.get(id);
         if (group) {
@@ -565,43 +704,86 @@ export function GameCanvas({
           group.position.set(base.x + toMeters(offset.x), 0, base.z + toMeters(offset.y));
         }
       }
-      const bedDrawer = propParts.get(`${id}:searched`);
-      if (bedDrawer) {
-        bedDrawer.visible = next.id === 'searched';
-        bedDrawer.position.z = next.id === 'searched' ? 0.82 : 0.23;
-      }
-      const part = propParts.get(id);
-      if (part) {
-        if (profile.motion === 'hinge') part.rotation.y = next.id === 'open' ? -1.08 : 0;
-        if (profile.motion === 'translate') part.position.z += next.id === 'open' ? 0.46 : -0.46;
-      }
       stateRef.current.onStatus(`${name}：${next.label} · 独立 3D 子部件`);
     };
 
-    const interact = () => {
-      const candidates: Array<{ distance: number; run: () => void }> = [];
+    type InteractionCandidate = {
+      id: string;
+      name: string;
+      prompt: string;
+      position: Vec2;
+      score: number;
+      durationMs: number;
+      run: () => void;
+    };
+    const getInteractionCandidate = (): InteractionCandidate | undefined => {
+      const candidates: InteractionCandidate[] = [];
       for (const prop of floor.props) {
         for (const part of prop.parts ?? []) {
           const id = `${prop.id}:${part.id}`;
-          const distance = Math.hypot(player.x - part.position.x, player.y - part.position.y);
+          const parentOffset = memory.offsets[prop.id] ?? { x: 0, y: 0 };
+          const position = { x: part.position.x + parentOffset.x, y: part.position.y + parentOffset.y };
+          const score = interactionScore(
+            player,
+            player.facing,
+            position,
+            [...floor.walls, ...(floor.obstacles ?? [])],
+            part.interaction.maxDistance,
+            part.interaction.facingDot,
+          );
+          if (score === null) continue;
           candidates.push({
-            distance,
-            run: () => toggleProfile(id, part.name, part.interaction, memory.parts, part.position),
+            id,
+            name: part.name,
+            prompt: part.interaction.prompt,
+            position,
+            score,
+            durationMs: part.interaction.durationMs ?? 480,
+            run: () => toggleProfile(id, part.name, part.interaction, memory.parts, position),
           });
         }
         if (prop.interaction) {
           const offset = memory.offsets[prop.id] ?? { x: 0, y: 0 };
           const position = { x: prop.position.x + offset.x, y: prop.position.y + offset.y };
-          const distance = Math.hypot(player.x - position.x, player.y - position.y);
+          const score = interactionScore(
+            player,
+            player.facing,
+            position,
+            [...floor.walls, ...(floor.obstacles ?? [])],
+            prop.interaction.maxDistance,
+            prop.interaction.facingDot,
+          );
+          if (score === null) continue;
           candidates.push({
-            distance,
+            id: prop.id,
+            name: prop.name,
+            prompt: prop.interaction.prompt,
+            position,
+            score,
+            durationMs: prop.interaction.durationMs ?? 420,
             run: () => toggleProfile(prop.id, prop.name, prop.interaction!, memory.props, position, prop),
           });
         }
       }
-      const nearest = candidates.filter((item) => item.distance < 84).sort((a, b) => a.distance - b.distance)[0];
-      if (!nearest) stateRef.current.onStatus('附近没有可互动的物品');
-      else nearest.run();
+      return candidates.sort((a, b) => a.score - b.score)[0];
+    };
+
+    let interactionBusyUntil = 0;
+    let activeInteractionName = '';
+    const interact = () => {
+      const now = performance.now();
+      if (now < interactionBusyUntil) {
+        stateRef.current.onStatus(`${activeInteractionName}：动作尚未完成`);
+        return;
+      }
+      const candidate = getInteractionCandidate();
+      if (!candidate) {
+        stateRef.current.onStatus('请靠近并面向要互动的物品');
+        return;
+      }
+      interactionBusyUntil = now + candidate.durationMs;
+      activeInteractionName = candidate.name;
+      candidate.run();
     };
 
     let stairCooldown = false;
@@ -647,12 +829,111 @@ export function GameCanvas({
     observer.observe(mount);
     resize();
 
-    const animateRig = (rig: Rig, phase: number, moving: boolean, speed = 1) => {
-      const swing = moving ? Math.sin(phase * speed) * 0.62 : 0;
-      rig.leftLeg.rotation.x = swing;
-      rig.rightLeg.rotation.x = -swing;
-      rig.leftArm.rotation.x = -swing * 0.7;
-      rig.rightArm.rotation.x = swing * 0.7;
+    const animateRig = (rig: Rig, phase: number, moving: boolean, dt: number, speed = 1) => {
+      rig.locomotionWeight = THREE.MathUtils.damp(rig.locomotionWeight, moving ? 1 : 0, moving ? 9 : 12, dt);
+      const weight = rig.locomotionWeight;
+      const cycle = phase * speed;
+      const swing = Math.sin(cycle);
+      const opposite = Math.sin(cycle + Math.PI);
+      rig.leftLeg.rotation.x = swing * 0.72 * weight;
+      rig.rightLeg.rotation.x = opposite * 0.72 * weight;
+      rig.leftShin.rotation.x = Math.max(0, -swing) * 0.78 * weight;
+      rig.rightShin.rotation.x = Math.max(0, -opposite) * 0.78 * weight;
+      rig.leftArm.rotation.x = -swing * 0.5 * weight;
+      rig.rightArm.rotation.x = swing * 0.5 * weight;
+      rig.leftForearm.rotation.x = -0.16 - Math.max(0, swing) * 0.3 * weight;
+      rig.rightForearm.rotation.x = -0.16 - Math.max(0, -swing) * 0.3 * weight;
+      rig.visual.position.y = Math.abs(Math.sin(cycle * 2)) * 0.026 * weight;
+      rig.torso.rotation.x = -0.055 * weight;
+      rig.torso.rotation.z = Math.sin(cycle) * 0.025 * weight;
+    };
+
+    const updateInteractiveParts = (dt: number) => {
+      for (const prop of floor.props) {
+        const propState = prop.interaction
+          ? memory.props[prop.id] ?? prop.interaction.defaultState
+          : undefined;
+        const bedBinding = bedDrawers.get(prop.id);
+        if (bedBinding) {
+          const open = propState === 'searched';
+          bedBinding.object.visible = open || Math.abs(bedBinding.object.position.z - bedBinding.closedZ) > 0.01;
+          bedBinding.object.position.z = THREE.MathUtils.damp(
+            bedBinding.object.position.z,
+            open ? bedBinding.openZ : bedBinding.closedZ,
+            10,
+            dt,
+          );
+        }
+        for (const partSpec of prop.parts ?? []) {
+          const id = `${prop.id}:${partSpec.id}`;
+          const object = propParts.get(id);
+          const base = partBases.get(id);
+          if (!object || !base) continue;
+          const open = (memory.parts[id] ?? partSpec.interaction.defaultState) === 'open';
+          if (partSpec.interaction.motion === 'hinge') {
+            object.rotation.y = THREE.MathUtils.damp(object.rotation.y, base.rotationY + (open ? -1.08 : 0), 11, dt);
+          }
+          if (partSpec.interaction.motion === 'translate') {
+            object.position.z = THREE.MathUtils.damp(object.position.z, base.position.z + (open ? 0.46 : 0), 11, dt);
+          }
+        }
+      }
+    };
+
+    const occupantCircles = (excludeId?: string): CircleCollider[] => residentRigs.flatMap((resident) => {
+      const collider = resident.spec.collider;
+      if (!collider?.blocksMovement || resident.spec.id === excludeId) return [];
+      return [{ id: resident.spec.id, position: resident.state.position, radius: collider.radius }];
+    });
+
+    const advanceWaypoint = (resident: ResidentRuntime) => {
+      const navigation = resident.spec.navigation;
+      if (!navigation || navigation.waypoints.length < 2) return;
+      if (navigation.mode === 'loop') {
+        resident.state.waypointIndex = (resident.state.waypointIndex + 1) % navigation.waypoints.length;
+        return;
+      }
+      const next = resident.state.waypointIndex + resident.state.waypointDirection;
+      if (next >= navigation.waypoints.length || next < 0) {
+        resident.state.waypointDirection = resident.state.waypointDirection === 1 ? -1 : 1;
+      }
+      resident.state.waypointIndex += resident.state.waypointDirection;
+    };
+
+    const updateResidents = (dt: number, elapsed: number, pausedNow: boolean) => {
+      const blockingRects = [...floor.walls, ...(floor.obstacles ?? []), ...propColliderRects()];
+      for (const resident of residentRigs) {
+        const navigation = resident.spec.navigation;
+        resident.moving = false;
+        if (!pausedNow && navigation?.waypoints.length) {
+          const target = navigation.waypoints[resident.state.waypointIndex] ?? navigation.waypoints[0];
+          const dx = target.x - resident.state.position.x;
+          const dy = target.y - resident.state.position.y;
+          const distance = Math.hypot(dx, dy);
+          if (distance < 5) {
+            advanceWaypoint(resident);
+          } else {
+            const step = Math.min(navigation.speed * dt, distance);
+            const delta = { x: dx / distance * step, y: dy / distance * step };
+            const circles = occupantCircles(resident.spec.id);
+            circles.push({ id: 'player', position: player, radius: player.radius });
+            const radius = resident.spec.collider?.radius ?? 14;
+            const next = moveCircleWithSliding(resident.state.position, delta, radius, blockingRects, circles);
+            resident.moving = next.x !== resident.state.position.x || next.y !== resident.state.position.y;
+            resident.state.position = next;
+            if (resident.moving) resident.state.facing = Math.atan2(delta.x, delta.y);
+          }
+        }
+        const world = toWorld(resident.state.position);
+        if (resident.spec.behavior !== 'sleeping') {
+          resident.rig.root.position.set(world.x, 0, world.z);
+          resident.rig.root.rotation.y = resident.state.facing;
+          if (resident.spec.behavior !== 'hiding') {
+            animateRig(resident.rig, elapsed * 7 + resident.phase, resident.moving, dt, 1);
+          }
+        }
+        if (resident.colliderOutline) resident.colliderOutline.position.set(world.x, 0, world.z);
+      }
     };
 
     const render = (now: number) => {
@@ -669,6 +950,8 @@ export function GameCanvas({
       scene.fog = new THREE.FogExp2(state.nightVision ? 0x06140b : 0x0a100d, state.nightVision ? 0.021 : 0.027);
       hemi.color.setHex(state.nightVision ? 0x83d59a : 0xbdd2c8);
       moon.color.setHex(state.nightVision ? 0x6bdc88 : 0xc9ddd7);
+      updateResidents(dt, elapsed, state.paused);
+      updateInteractiveParts(dt);
 
       if (!state.paused) {
         let x = 0;
@@ -677,37 +960,34 @@ export function GameCanvas({
         if (keys.has('s') || keys.has('arrowdown')) y += 1;
         if (keys.has('a') || keys.has('arrowleft')) x -= 1;
         if (keys.has('d') || keys.has('arrowright')) x += 1;
-        player.moving = Boolean(x || y);
+        const requestedMovement = Boolean(x || y);
         const length = Math.hypot(x, y) || 1;
         const velocity = { x: x / length * 145, y: y / length * 145 };
-        if (player.moving) player.facing = Math.atan2(velocity.x, velocity.y);
-        const proposed = { x: player.x + velocity.x * dt, y: player.y + velocity.y * dt };
-        const hitsWall = floor.walls.some((wall) => circleHitsRect(proposed, player.radius, wall));
-        const hitsProp = floor.props.some((prop) => {
-          if (!prop.collider) return false;
-          const offset = memory.offsets[prop.id] ?? { x: 0, y: 0 };
-          return circleHitsRect(proposed, player.radius, {
-            id: prop.id,
-            x: prop.position.x + offset.x - prop.collider.width / 2,
-            y: prop.position.y + offset.y - prop.collider.height / 2,
-            width: prop.collider.width,
-            height: prop.collider.height,
-          });
-        });
+        if (requestedMovement) player.facing = Math.atan2(velocity.x, velocity.y);
+        const proposed = moveCircleWithSliding(
+          player,
+          { x: velocity.x * dt, y: velocity.y * dt },
+          player.radius,
+          [...floor.walls, ...(floor.obstacles ?? []), ...propColliderRects()],
+          occupantCircles(),
+        );
         let pushed = false;
         for (const door of doors) {
-          if (player.moving) pushed = pushDoor(door, proposed, velocity) || pushed;
+          if (requestedMovement) pushed = pushDoor(door, proposed, velocity) || pushed;
           updateDoor(door, dt);
           memory.doors[door.id] = door.angle;
           const group = doorGroups.get(door.id);
           if (group) group.rotation.y = -door.angle;
         }
         const blockedDoor = doors.some((door) => pointToDoor(proposed, door).distance < player.radius + door.width / 2 - 1);
-        if (!hitsWall && !hitsProp && (!blockedDoor || pushed)) {
+        const moved = proposed.x !== player.x || proposed.y !== player.y;
+        if (!blockedDoor || pushed) {
           player.x = proposed.x;
           player.y = proposed.y;
         }
+        player.moving = moved && (!blockedDoor || pushed);
       } else {
+        player.moving = false;
         for (const door of doors) {
           updateDoor(door, dt);
           memory.doors[door.id] = door.angle;
@@ -719,16 +999,24 @@ export function GameCanvas({
       const playerWorld = toWorld(player);
       playerRig.root.position.set(playerWorld.x, 0, playerWorld.z);
       playerRig.root.rotation.y = player.facing;
-      animateRig(playerRig, elapsed * 8, player.moving);
+      animateRig(playerRig, elapsed * 8, player.moving, dt);
       const forward = new THREE.Vector3(Math.sin(player.facing), 0, Math.cos(player.facing));
       flashlight.position.copy(playerRig.root.position).add(new THREE.Vector3(0, 1.42, 0));
       flashlightTarget.position.copy(playerRig.root.position).addScaledVector(forward, 4.6).add(new THREE.Vector3(0, 0.52, 0));
-      flashlight.intensity = state.nightVision ? 11 : 34;
-      residentRigs.forEach(({ rig, behavior, phase }) => {
-        const active = behavior === 'patrol' || behavior === 'investigate';
-        animateRig(rig, elapsed * 3.2 + phase, active, 1);
-        if (active) rig.root.position.y = Math.sin(elapsed * 2.4 + phase) * 0.018;
-      });
+      flashlight.intensity = state.nightVision ? 3.5 : 16;
+
+      const focusedInteraction = getInteractionCandidate();
+      interactionMarker.visible = Boolean(focusedInteraction);
+      interactionPrompt.hidden = !focusedInteraction;
+      if (focusedInteraction) {
+        const markerPosition = toWorld(focusedInteraction.position);
+        interactionMarker.position.set(markerPosition.x, 0.035, markerPosition.z);
+        interactionMarker.rotation.z = elapsed * 0.5;
+        const busy = now < interactionBusyUntil;
+        interactionPrompt.textContent = busy
+          ? `${activeInteractionName} · 动作中`
+          : `Q · ${focusedInteraction.name}`;
+      }
 
       if (state.cameraMode === 'follow') {
         const desired = playerRig.root.position.clone().addScaledVector(forward, -4.2).add(new THREE.Vector3(0, 6.2, 0));
@@ -746,6 +1034,15 @@ export function GameCanvas({
       renderer.domElement.dataset.camera = state.cameraMode;
       renderer.domElement.dataset.renderer = 'three-webgl';
       renderer.domElement.dataset.interactions = JSON.stringify({ ...memory.props, ...memory.parts });
+      renderer.domElement.dataset.focusedInteraction = focusedInteraction?.id ?? '';
+      renderer.domElement.dataset.interactionBusy = String(now < interactionBusyUntil);
+      renderer.domElement.dataset.occupants = JSON.stringify(Object.fromEntries(
+        residentRigs.map((resident) => [resident.spec.id, {
+          x: Number(resident.state.position.x.toFixed(1)),
+          y: Number(resident.state.position.y.toFixed(1)),
+          moving: resident.moving,
+        }]),
+      ));
       renderer.render(scene, camera);
       frameRequest = requestAnimationFrame(render);
     };
@@ -771,6 +1068,7 @@ export function GameCanvas({
       });
       renderer.dispose();
       renderer.domElement.remove();
+      interactionPrompt.remove();
     };
   }, [floorIndex]);
 
