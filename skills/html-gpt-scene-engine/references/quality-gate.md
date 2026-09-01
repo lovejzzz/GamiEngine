@@ -24,6 +24,10 @@ Score separate dimensions such as original art direction, non-toy form language,
 
 The form-language dimension fails when the full frame reads as a miniature or construction kit: repeated capsules and boxes dominate silhouettes, hard and soft materials share one edge radius, people stand in display poses, fixtures repeat mechanically, rooms are perfectly staged, or conspicuous graybox bodies remain. Judge both the complete cutaway and a close player-follow view; an attractive furniture close-up cannot pass this dimension by itself.
 
+Character fidelity fails when a rigged carrier body is visible as the costume, clothing leaves large anatomy-texture patches around shoulders/hips/knees, rigid add-ons detach during motion, feet slide or penetrate stairs, the fallback is mistaken for the authored load, or roles differ only by one tint. Require a runtime-ready signal plus idle, locomotion, stair and interaction captures from at least front and back presentation angles.
+
+Character fidelity fails when a rigged carrier body is visible as the costume, clothing leaves large anatomy-texture patches around shoulders/hips/knees, rigid add-ons detach during motion, feet slide or penetrate stairs, the fallback is mistaken for the authored load, or roles differ only by one tint. Require a runtime-ready signal plus idle, locomotion, stair and interaction captures from at least front and back presentation angles.
+
 Production requires both a minimum score and every critical dimension passed. Report the blockers beside the score. Never raise the score to match a desired release label.
 
 Use honest stages:

@@ -26,6 +26,11 @@ import {
   createHumanTorsoGeometry,
   createTaperedLimbGeometry,
 } from './humanoid-asset-factory';
+import {
+  createGltfCharacter,
+  type CharacterMotion,
+  type GltfCharacterRuntime,
+} from './gltf-character-factory';
 import { buildingScene } from '@/engine/demo-scene';
 import { resolveRuntimeSource } from '@/engine/asset-registry';
 import type { FloorSpec, InteractionProfile, OccupantSpec, PropSpec, RectSpec, Vec2 } from '@/engine/types';
@@ -70,6 +75,7 @@ type Rig = {
   rightShin: THREE.Group;
   locomotionWeight: number;
   forearmReady: number;
+  authored?: GltfCharacterRuntime;
 };
 
 type OccupantMemory = {
@@ -1019,6 +1025,10 @@ export function GameCanvas({
     };
     addRoomDetails();
 
+    let effectDisposed = false;
+    let authoredCharacterCount = 0;
+    let authoredCharacterFailed = false;
+
     const makeRig = (kind: 'operator' | 'resident', tint = 0x7a756c, styleIndex = 0): Rig => {
       const root = new THREE.Group();
       const visual = new THREE.Group();
@@ -1169,7 +1179,28 @@ export function GameCanvas({
       };
     };
 
+    const hydrateRig = (rig: Rig, kind: 'operator' | 'resident', tint: number, styleIndex = 0) => {
+      const characterAsset = buildingScene.assets.find((asset) => asset.id === `character.${kind}`);
+      const bodySource = resolveRuntimeSource(buildingScene.assets, characterAsset?.id ?? '', 'runtime-model');
+      const animationSource = resolveRuntimeSource(buildingScene.assets, characterAsset?.animation?.clipAsset ?? '', 'runtime-model');
+      if (!bodySource || !animationSource) {
+        authoredCharacterFailed = true;
+        return;
+      }
+      void createGltfCharacter(kind, tint, styleIndex, bodySource, animationSource).then((authored) => {
+        if (effectDisposed) return;
+        rig.authored = authored;
+        rig.root.add(authored.root);
+        rig.visual.visible = false;
+        authoredCharacterCount += 1;
+      }).catch((error: unknown) => {
+        authoredCharacterFailed = true;
+        console.warn('Gami authored character failed; keeping procedural fallback.', error);
+      });
+    };
+
     const playerRig = makeRig('operator');
+    hydrateRig(playerRig, 'operator', 0x53635b);
     const arrival = pendingFloorSpawn?.floorId === floor.id ? pendingFloorSpawn : null;
     const player = {
       ...(arrival?.position ?? floor.spawn),
@@ -1192,6 +1223,7 @@ export function GameCanvas({
     floor.occupants.forEach((occupant, index) => {
       const palette = [0x77766e, 0x66747b, 0x7b665d, 0x59665c];
       const rig = makeRig('resident', palette[index % palette.length], index);
+      hydrateRig(rig, 'resident', palette[index % palette.length], index);
       const actorState = memory.occupants[occupant.id];
       rig.root.position.copy(toWorld(actorState.position));
       rig.root.rotation.y = actorState.facing;
@@ -1427,6 +1459,8 @@ export function GameCanvas({
 
     let interactionBusyUntil = 0;
     let activeInteractionName = '';
+    let playerActionUntil = 0;
+    let playerAction: CharacterMotion | null = null;
     const interact = () => {
       const now = performance.now();
       if (now < interactionBusyUntil) {
@@ -1439,6 +1473,8 @@ export function GameCanvas({
         return;
       }
       interactionBusyUntil = now + candidate.durationMs;
+      playerActionUntil = interactionBusyUntil;
+      playerAction = candidate.prompt.includes('推') ? 'push' : 'interact';
       activeInteractionName = candidate.name;
       candidate.run();
     };
@@ -1458,6 +1494,8 @@ export function GameCanvas({
         else {
           const door = nearby.door;
           const action = toggleDoorMotor(door);
+          playerAction = 'push';
+          playerActionUntil = performance.now() + 520;
           stateRef.current.onStatus(`${door.name}：${action === 'open' ? '打开' : '关闭'}`);
         }
       }
@@ -1486,7 +1524,19 @@ export function GameCanvas({
     observer.observe(mount);
     resize();
 
-    const animateRig = (rig: Rig, phase: number, moving: boolean, dt: number, speed = 1) => {
+    const animateRig = (
+      rig: Rig,
+      phase: number,
+      moving: boolean,
+      dt: number,
+      speed = 1,
+      forcedMotion?: CharacterMotion,
+    ) => {
+      if (rig.authored) {
+        rig.authored.setMotion(forcedMotion ?? (moving ? 'walk' : 'idle'));
+        rig.authored.update(dt);
+        return;
+      }
       rig.locomotionWeight = THREE.MathUtils.damp(rig.locomotionWeight, moving ? 1 : 0, moving ? 9 : 12, dt);
       const weight = rig.locomotionWeight;
       const cycle = phase * speed;
@@ -1585,9 +1635,16 @@ export function GameCanvas({
         if (resident.spec.behavior !== 'sleeping') {
           resident.rig.root.position.set(world.x, 0, world.z);
           resident.rig.root.rotation.y = resident.state.facing;
-          if (resident.spec.behavior !== 'hiding') {
-            animateRig(resident.rig, elapsed * 7 + resident.phase, resident.moving, dt, 1);
-          }
+          animateRig(
+            resident.rig,
+            elapsed * 7 + resident.phase,
+            resident.moving,
+            dt,
+            1,
+            resident.spec.behavior === 'hiding' ? 'crouch' : undefined,
+          );
+        } else if (resident.rig.authored) {
+          resident.rig.authored.update(dt * .18);
         }
         if (resident.colliderOutline) resident.colliderOutline.position.set(world.x, 0, world.z);
       }
@@ -1660,7 +1717,8 @@ export function GameCanvas({
       const stairLift = playerOnStairs ? stairProgress(player, floor.stairs) * floor.stairs.rise : 0;
       playerRig.root.position.set(playerWorld.x, stairLift, playerWorld.z);
       playerRig.root.rotation.y = player.facing;
-      animateRig(playerRig, elapsed * 8, player.moving, dt);
+      const actionMotion = now < playerActionUntil ? playerAction ?? undefined : undefined;
+      animateRig(playerRig, elapsed * 8, player.moving, dt, 1, actionMotion ?? (playerOnStairs ? 'stairs' : undefined));
       if (playerOnStairs) {
         playerRig.torso.rotation.x -= 0.1;
         playerRig.leftShin.rotation.x += 0.16;
@@ -1711,6 +1769,9 @@ export function GameCanvas({
       renderer.domElement.dataset.interactionBusy = String(now < interactionBusyUntil);
       renderer.domElement.dataset.stairProgress = playerOnStairs ? stairProgress(player, floor.stairs).toFixed(3) : '';
       renderer.domElement.dataset.stairTransition = String(transitioningFloor);
+      renderer.domElement.dataset.characterAssets = authoredCharacterFailed
+        ? `fallback:${authoredCharacterCount}`
+        : authoredCharacterCount === residentRigs.length + 1 ? `gltf-ready:${authoredCharacterCount}` : `loading:${authoredCharacterCount}`;
       renderer.domElement.dataset.occupants = JSON.stringify(Object.fromEntries(
         residentRigs.map((resident) => [resident.spec.id, {
           x: Number(resident.state.position.x.toFixed(1)),
@@ -1726,6 +1787,7 @@ export function GameCanvas({
     frameRequest = requestAnimationFrame(render);
 
     return () => {
+      effectDisposed = true;
       cancelAnimationFrame(frameRequest);
       if (transitionTimer) clearTimeout(transitionTimer);
       observer.disconnect();

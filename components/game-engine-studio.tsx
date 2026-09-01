@@ -17,6 +17,7 @@ const kindIcon = {
   'door-face': DoorOpen,
   prop: Cuboid,
   character: UserRound,
+  animation: Footprints,
   material: ImageIcon,
 };
 

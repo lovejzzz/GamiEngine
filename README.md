@@ -11,10 +11,10 @@ The included demo is an original four-floor townhouse built around tense, room-b
 - WASD movement, wall/prop collision, pushable two-sided hinge doors, and door motors
 - Nearest-target interaction with independent cabinet doors and drawers
 - Persistent door, prop, child-part, and moved-object state across floor streaming
-- Articulated 3D operator/resident rigs with procedural walk cycles and behavior poses
+- Manifest-loaded skinned glTF operator/resident bodies, a shared pruned animation library, crossfaded locomotion/action states, and procedural missing-asset fallbacks
 - Generated whole-building art-direction study translated into cool window light, warm practical pools, wainscot, dark walnut stairs, room dressing, fog, ACES tone mapping, and night vision
 - GPT asset lab and server-only image-generation route
-- Manifest-enforced separation of `reference-study`, `runtime-texture`, and `runtime-sprite`
+- Manifest-enforced separation of `reference-study`, `runtime-texture`, `runtime-sprite`, and `runtime-model`
 - Procedural fallbacks so the scene stays playable when generated art is unavailable
 
 ## Run locally
@@ -63,7 +63,7 @@ generated seamless texture ───UV map─────┤
 
 A whole-object reference image is never rendered on a plane to impersonate 3D. If a visible piece can move, reveal space, block the player, or retain state, it becomes a separately modeled child with a stable ID, pivot/axis, collider, and state machine. This is why one kitchen interaction cannot accidentally open every cabinet at once.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the engine boundaries and extension path. The reusable Codex skill lives in [skills/html-gpt-scene-engine/SKILL.md](skills/html-gpt-scene-engine/SKILL.md).
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the engine boundaries and extension path, and [docs/ASSET_CREDITS.md](docs/ASSET_CREDITS.md) for external asset provenance. The reusable Codex skill lives in [skills/html-gpt-scene-engine/SKILL.md](skills/html-gpt-scene-engine/SKILL.md).
 
 ## Project map
 
@@ -74,7 +74,7 @@ engine/types.ts              Versioned scene contract
 engine/demo-scene.ts         Four-floor demo manifest
 engine/asset-registry.ts     Runtime/reference asset boundary
 engine/runtime.ts            Deterministic collision and door physics
-public/assets/               Generated studies, textures, and sprite fallback
+public/assets/               Generated studies/textures plus licensed runtime models
 skills/html-gpt-scene-engine Reusable scene-building workflow and validators
 ```
 

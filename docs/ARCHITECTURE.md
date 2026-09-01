@@ -34,7 +34,9 @@ The cutaway keeps the south wall low, side walls medium, and internal walls read
 
 ### Characters
 
-The current demo builds articulated two-joint procedural limbs, blends idle/walk weights, and drives patrol/investigate clips from real waypoint movement. Sleeping and hiding are separate poses. Every character recipe carries a shared skeleton ID plus an implemented/required clip inventory. The existing 4×4 generated sprite atlas remains a declared runtime fallback. Production characters can move to skinned glTF clips without changing occupant IDs or AI behavior.
+The runtime resolves a skinned glTF body and a separately addressable animation-library asset through the manifest. It clones the skeleton per actor, remaps CC0 source-bone rotations to the Gami skeleton, rejects source translation tracks so mannequin limb lengths and root motion cannot overwrite engine scale, and crossfades idle, walk, stairs, crouch, push, and interaction states. Patrol/investigate clips are driven by real waypoint movement; sleeping and hiding remain behavior-specific poses.
+
+The earlier articulated procedural body remains a missing-asset fallback and is hidden only after the glTF instance is ready. Actor IDs, collision, AI state, stairs, interaction and save memory do not depend on either visual implementation. External asset provenance and bundled licenses are recorded in `docs/ASSET_CREDITS.md`.
 
 ## Asset production pipeline
 
@@ -48,7 +50,7 @@ The current demo builds articulated two-joint procedural limbs, blends idle/walk
 
 ## Production extension points
 
-- Add an async glTF loader behind the existing `geometry.source` contract.
+- Add LOD and compressed glTF variants behind the existing `geometry.source` contract.
 - Use KTX2/Basis textures and meshopt/Draco compression for larger scenes.
 - Add normal/roughness maps and environment lighting without changing asset roles.
 - Move floor memory into a serializable save service.

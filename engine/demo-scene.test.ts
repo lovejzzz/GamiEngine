@@ -122,10 +122,17 @@ describe('Gami Engine demo manifest', () => {
 
   it('keeps a clip inventory for every articulated character asset', () => {
     for (const character of buildingScene.assets.filter((asset) => asset.kind === 'character')) {
+      expect(character.usage).toBe('runtime-model');
+      expect(character.geometry?.source).toBe('gltf');
+      expect(character.geometry?.meshSource).toBe(character.source);
+      expect(character.geometry?.fallbackPrimitiveFamily).toBeTruthy();
       expect(character.animation?.skeleton).toBeTruthy();
+      expect(character.animation?.clipAsset).toBe('character.animation-library');
       expect(character.animation?.rootMotion).toBe('engine');
       expect(character.animation?.clips.some((clip) => clip.id === 'idle' && clip.status === 'implemented')).toBe(true);
       expect(character.animation?.clips.some((clip) => clip.id === 'walk' && clip.status === 'implemented')).toBe(true);
+      expect(character.provenance?.license).toBe('CC0-1.0');
     }
+    expect(buildingScene.assets.find((asset) => asset.id === 'character.animation-library')?.usage).toBe('runtime-model');
   });
 });

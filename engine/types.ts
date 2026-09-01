@@ -6,6 +6,7 @@ export type AssetKind =
   | 'door-face'
   | 'prop'
   | 'character'
+  | 'animation'
   | 'material';
 
 export type InteractionAction =
@@ -51,7 +52,7 @@ export type AssetRecipe = {
   description: string;
   prompt: string;
   source?: string;
-  usage?: 'runtime-texture' | 'reference-study' | 'runtime-sprite';
+  usage?: 'runtime-texture' | 'reference-study' | 'runtime-sprite' | 'runtime-model';
   state: 'ready' | 'recipe';
   side?: 'front' | 'back' | 'top';
   physicalSize: Vec2;
@@ -128,6 +129,7 @@ export type AssetRecipe = {
   };
   animation?: {
     skeleton: string;
+    clipAsset?: string;
     rootMotion: 'engine' | 'clip';
     clips: Array<{
       id: string;
@@ -135,6 +137,12 @@ export type AssetRecipe = {
       duration: number;
       status: 'implemented' | 'required';
     }>;
+  };
+  provenance?: {
+    creator: string;
+    sourceUrl: string;
+    license: string;
+    modified?: string[];
   };
   interaction?: InteractionProfile;
 };

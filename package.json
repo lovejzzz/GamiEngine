@@ -11,7 +11,7 @@
     "start": "wrangler dev --config dist/server/wrangler.json",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint app components/game-canvas.tsx components/game-engine-studio.tsx engine",
+    "lint": "oxlint app components/game-canvas.tsx components/game-engine-studio.tsx components/gltf-character-factory.ts components/humanoid-asset-factory.ts engine",
     "format": "oxfmt"
   },
   "dependencies": {

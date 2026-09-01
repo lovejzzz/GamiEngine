@@ -16,6 +16,7 @@ describe('runtime asset boundary', () => {
     { ...base, id: 'study', name: 'study', usage: 'reference-study', source: '/study.png' },
     { ...base, id: 'surface', name: 'surface', usage: 'runtime-texture', source: '/surface.png' },
     { ...base, id: 'sprite', name: 'sprite', usage: 'runtime-sprite', source: '/sprite.png' },
+    { ...base, id: 'model', name: 'model', usage: 'runtime-model', source: '/model.glb' },
   ];
 
   it('never resolves a reference study for rendering', () => {
@@ -27,5 +28,7 @@ describe('runtime asset boundary', () => {
     expect(resolveRuntimeSource(assets, 'surface', 'runtime-texture')).toBe('/surface.png');
     expect(resolveRuntimeSource(assets, 'surface', 'runtime-sprite')).toBeNull();
     expect(resolveRuntimeSource(assets, 'sprite', 'runtime-sprite')).toBe('/sprite.png');
+    expect(resolveRuntimeSource(assets, 'model', 'runtime-model')).toBe('/model.glb');
+    expect(resolveRuntimeSource(assets, 'model', 'runtime-texture')).toBeNull();
   });
 });

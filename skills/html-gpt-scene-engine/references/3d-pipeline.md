@@ -55,6 +55,22 @@ Doors rotate around engine hinges, drawers translate along engine axes, and char
 
 Before producing a character, keep a clip inventory in the asset recipe with a shared skeleton ID, root-motion policy, duration, loop mode, and `implemented` or `required` status. At minimum separate idle and locomotion; add pushing, searching, stairs, crouching, sleeping, hiding, surrendering, or other poses when the scene actually uses them. Reference images define anatomy and costume, not joint tracks.
 
+For an external or generated rig, record creator/source/license and keep the model and animation-library IDs separate. Prune clips from the interaction and locomotion inventory instead of shipping a complete library. Retarget rotations first; if the engine owns root motion, discard source root and per-bone translations until a measured test proves they preserve target proportions and foot contact. Crossfade state changes and verify that locomotion advances only when simulation position advances.
+
+Clip names are claims, not evidence. After retargeting, inspect the actual silhouette at the action extreme: a source clip named `push`, `stairs`, `aim` or `interact` may produce raised hands, inverted elbows, detached equipment or a mismatched center of gravity on the target rig. Map gameplay to the best verified result and leave semantically named but visually wrong clips unused.
+
+Clip names are claims, not evidence. After retargeting, inspect the actual silhouette at the action extreme: a source clip named `push`, `stairs`, `aim` or `interact` may produce raised hands, inverted elbows, detached equipment or a mismatched center of gravity on the target rig. Map gameplay to the best verified result and leave semantically named but visually wrong clips unused.
+
+A skinned nude, underwear, superhero-base or neutral scan is only a deformation carrier. Build or generate independent costume geometry that covers the carrier from front, back and side while moving. Review elbows, knees, hips, shoulders, shoes, neckline and equipment attachment in idle, stride extremes, crouch and interaction. Exposed carrier patches or detached equipment fail character fidelity even when the skeleton and clip technically work.
+
+Keep a renderer-safe procedural fallback, but expose whether the authored model is `loading`, `ready`, or `failed`. A screenshot of the fallback cannot certify the glTF path.
+
+For an external or generated rig, record creator/source/license and keep the model and animation-library IDs separate. Prune clips from the interaction and locomotion inventory instead of shipping a complete library. Retarget rotations first; if the engine owns root motion, discard source root and per-bone translations until a measured test proves they preserve target proportions and foot contact. Crossfade state changes and verify that locomotion advances only when simulation position advances.
+
+A skinned nude, underwear, superhero-base or neutral scan is only a deformation carrier. Build or generate independent costume geometry that covers the carrier from front, back and side while moving. Review elbows, knees, hips, shoulders, shoes, neckline and equipment attachment in idle, stride extremes, crouch and interaction. Exposed carrier patches or detached equipment fail character fidelity even when the skeleton and clip technically work.
+
+Keep a renderer-safe procedural fallback, but expose whether the authored model is `loading`, `ready`, or `failed`. A screenshot of the fallback cannot certify the glTF path.
+
 ## 6. Validate in play
 
 Walk through the complete space with the actual input scheme. Test collision at corners, pushing both sides of doors, nearest-child selection, one-child-only changes, floor transitions, state restoration, follow/editor cameras, low viewport sizes, missing textures, and console errors. Inspect both visual plausibility and simulation correctness.
