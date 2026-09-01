@@ -256,6 +256,9 @@ export type BuildingScene = {
       warmLightsPerRoom: [number, number];
       setPiecesPerRoom: [number, number];
       edgeSoftness: 'beveled' | 'mixed' | 'sharp';
+      hardSurfaceEdgeRadiusM?: [number, number];
+      softSurfaceEdgeRadiusM?: [number, number];
+      forbiddenFormLanguage?: string[];
       materialFamilies: string[];
     };
   };

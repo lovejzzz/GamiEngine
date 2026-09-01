@@ -29,9 +29,11 @@ describe('Gami Engine demo manifest', () => {
     expect(buildingScene.styleLock.contract).toMatchObject({
       cameraElevationDegrees: 34,
       cameraAzimuthDegrees: -38,
-      environmentIntensity: 0.22,
-      edgeSoftness: 'beveled',
+      environmentIntensity: 0.24,
+      edgeSoftness: 'mixed',
+      hardSurfaceEdgeRadiusM: [.001, .012],
     });
+    expect(buildingScene.styleLock.contract?.forbiddenFormLanguage).toContain('capsule-mannequin');
     expect(buildingScene.styleLock.contract?.setPiecesPerRoom[0]).toBeGreaterThanOrEqual(6);
     for (const id of [
       'material.plaster.greige.base',

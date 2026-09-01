@@ -20,7 +20,9 @@ Reject generic shortcuts explicitly. Record prohibited patterns such as one infl
 
 ## Whole-scene scoring
 
-Score separate dimensions such as original art direction, Hero construction, materials, interaction/simulation, lighting, character fidelity, animation performance, and architectural/set-dressing completion. Give full weight only to passed dimensions. In-progress work may receive small progress credit but must not satisfy a critical gate; failed work receives none.
+Score separate dimensions such as original art direction, non-toy form language, Hero construction, materials, interaction/simulation, lighting, character fidelity, animation performance, and architectural/set-dressing completion. Give full weight only to passed dimensions. In-progress work may receive small progress credit but must not satisfy a critical gate; failed work receives none.
+
+The form-language dimension fails when the full frame reads as a miniature or construction kit: repeated capsules and boxes dominate silhouettes, hard and soft materials share one edge radius, people stand in display poses, fixtures repeat mechanically, rooms are perfectly staged, or conspicuous graybox bodies remain. Judge both the complete cutaway and a close player-follow view; an attractive furniture close-up cannot pass this dimension by itself.
 
 Production requires both a minimum score and every critical dimension passed. Report the blockers beside the score. Never raise the score to match a desired release label.
 
@@ -32,4 +34,4 @@ Use honest stages:
 
 ## Evidence quality
 
-Prefer evidence that can disprove readiness: geometry-type or hierarchy tests, missing-map checks, budget checks, close-up runtime captures, collision walks, one-child-only interaction tests, stair traversal, and console/runtime-error checks. A manifest field is a claim; a test or inspected runtime artifact is evidence.
+Prefer evidence that can disprove readiness: cross-section variation and geometry hierarchy tests, missing-map checks, budget checks, full-frame and follow-camera captures, collision walks, one-child-only interaction tests, stair traversal, and console/runtime-error checks. A manifest field is a claim; a test or inspected runtime artifact is evidence.

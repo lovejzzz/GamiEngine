@@ -36,8 +36,9 @@ describe('asset quality bridge', () => {
 
   it('keeps the whole demo honestly below production while critical craft areas remain unfinished', () => {
     const audit = auditSceneQuality(buildingScene);
-    expect(audit).toMatchObject({ score: 69, productionReady: false, stage: 'prototype' });
+    expect(audit).toMatchObject({ score: 63, productionReady: false, stage: 'prototype' });
     expect(audit.heroAssets).toEqual({ passed: 4, total: 4 });
+    expect(audit.blockers.some((blocker) => blocker.includes('非玩具化造型语言'))).toBe(true);
     expect(audit.blockers).toEqual(expect.arrayContaining([
       expect.stringContaining('角色造型可信度'),
       expect.stringContaining('动作表演质量'),
