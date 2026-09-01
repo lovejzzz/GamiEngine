@@ -56,6 +56,10 @@ describe('Gami Engine demo manifest', () => {
         expect(assets.has(door.backAsset)).toBe(true);
         expect(door.closedAngle).toBeGreaterThanOrEqual(door.minAngle);
         expect(door.closedAngle).toBeLessThanOrEqual(door.maxAngle);
+        if (door.initialAngle !== undefined) {
+          expect(door.initialAngle).toBeGreaterThanOrEqual(door.minAngle);
+          expect(door.initialAngle).toBeLessThanOrEqual(door.maxAngle);
+        }
       }
       for (const prop of floor.props) expect(assets.has(prop.asset)).toBe(true);
       for (const occupant of floor.occupants) expect(assets.has(occupant.asset)).toBe(true);
@@ -132,6 +136,7 @@ describe('Gami Engine demo manifest', () => {
       expect(character.animation?.rootMotion).toBe('engine');
       expect(character.animation?.clips.some((clip) => clip.id === 'idle' && clip.status === 'implemented')).toBe(true);
       expect(character.animation?.clips.some((clip) => clip.id === 'walk' && clip.status === 'implemented')).toBe(true);
+      expect(assets.get(character.pbr?.baseColorAsset ?? '')).toMatchObject({ usage: 'runtime-texture', state: 'ready' });
       expect(character.provenance?.license).toBe('CC0-1.0');
     }
     expect(buildingScene.assets.find((asset) => asset.id === 'character.animation-library')?.usage).toBe('runtime-model');

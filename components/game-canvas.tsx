@@ -39,6 +39,11 @@ import {
 } from './pbr-material-factory';
 import { buildingScene } from '@/engine/demo-scene';
 import { resolveRuntimeSource } from '@/engine/asset-registry';
+import {
+  createVisualIntelligenceReport,
+  measureVisualFrame,
+  type VisualIntelligenceReport,
+} from '@/engine/visual-intelligence';
 import type { FloorSpec, InteractionProfile, OccupantSpec, PropSpec, RectSpec, Vec2 } from '@/engine/types';
 import {
   circleHitsRect,
@@ -65,6 +70,7 @@ type Props = {
   cinematic: boolean;
   onFloorChange: (index: number) => void;
   onStatus: (label: string) => void;
+  onVisualReport: (report: VisualIntelligenceReport) => void;
 };
 
 type Rig = {
@@ -147,7 +153,7 @@ function makeMemory(floor: FloorSpec): FloorMemory {
   const existing = memories.get(floor.id);
   if (existing) return existing;
   const memory: FloorMemory = { doors: {}, props: {}, parts: {}, offsets: {}, occupants: {} };
-  for (const door of floor.doors) memory.doors[door.id] = door.closedAngle;
+  for (const door of floor.doors) memory.doors[door.id] = door.initialAngle ?? door.closedAngle;
   for (const prop of floor.props) {
     if (prop.interaction) memory.props[prop.id] = prop.interaction.defaultState;
     for (const part of prop.parts ?? []) memory.parts[`${prop.id}:${part.id}`] = part.interaction.defaultState;
@@ -173,12 +179,13 @@ export function GameCanvas({
   cinematic,
   onFloorChange,
   onStatus,
+  onVisualReport,
 }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
-  const stateRef = useRef({ paused, showPhysics, nightVision, cameraMode, onFloorChange, onStatus });
+  const stateRef = useRef({ paused, showPhysics, nightVision, cameraMode, onFloorChange, onStatus, onVisualReport });
   useEffect(() => {
-    stateRef.current = { paused, showPhysics, nightVision, cameraMode, onFloorChange, onStatus };
-  }, [paused, showPhysics, nightVision, cameraMode, onFloorChange, onStatus]);
+    stateRef.current = { paused, showPhysics, nightVision, cameraMode, onFloorChange, onStatus, onVisualReport };
+  }, [paused, showPhysics, nightVision, cameraMode, onFloorChange, onStatus, onVisualReport]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -202,6 +209,11 @@ export function GameCanvas({
     renderer.domElement.tabIndex = 0;
     renderer.domElement.setAttribute('aria-label', 'Gami Engine 3D 房屋演示。WASD 移动，E 开门，Q 互动，沿楼梯行走自动上下楼。');
     mount.appendChild(renderer.domElement);
+    const visualProbeCanvas = document.createElement('canvas');
+    visualProbeCanvas.width = 256;
+    visualProbeCanvas.height = 144;
+    const visualProbeContext = visualProbeCanvas.getContext('2d', { willReadFrequently: true });
+    let nextVisualProbeAt = 0;
     const composer = cinematic ? new EffectComposer(renderer) : null;
     let moodGrade: ShaderPass | null = null;
     if (composer) {
@@ -555,7 +567,9 @@ export function GameCanvas({
       motorTarget: null,
     }));
     const doorGroups = new Map<string, THREE.Group>();
-    const doorLeafMaterial = sageMaterial;
+    // Doors are a dominant full-height silhouette. A pale painted slab read as a
+    // toy block in the cutaway view; the reference uses dense, aged joinery.
+    const doorLeafMaterial = wainscotMaterial;
     for (const door of doors) {
       const hinge = toWorld(door.hinge);
       const group = new THREE.Group();
@@ -1160,11 +1174,12 @@ export function GameCanvas({
       const characterAsset = buildingScene.assets.find((asset) => asset.id === `character.${kind}`);
       const bodySource = resolveRuntimeSource(buildingScene.assets, characterAsset?.id ?? '', 'runtime-model');
       const animationSource = resolveRuntimeSource(buildingScene.assets, characterAsset?.animation?.clipAsset ?? '', 'runtime-model');
-      if (!bodySource || !animationSource) {
+      const albedoSource = resolveRuntimeSource(buildingScene.assets, characterAsset?.pbr?.baseColorAsset ?? '', 'runtime-texture');
+      if (!bodySource || !animationSource || !albedoSource) {
         authoredCharacterFailed = true;
         return;
       }
-      void createGltfCharacter(kind, tint, styleIndex, bodySource, animationSource).then((authored) => {
+      void createGltfCharacter(kind, tint, styleIndex, bodySource, animationSource, albedoSource).then((authored) => {
         if (effectDisposed) return;
         rig.authored = authored;
         rig.root.add(authored.root);
@@ -1733,9 +1748,20 @@ export function GameCanvas({
       }
 
       if (state.cameraMode === 'follow') {
-        const desired = playerRig.root.position.clone().addScaledVector(forward, -3.55).add(new THREE.Vector3(0, 5.45, 0));
+        const distanceToBuildingEdge = Math.min(
+          player.x - 90,
+          buildingScene.world.width - 90 - player.x,
+          player.y - 50,
+          buildingScene.world.height - 50 - player.y,
+        );
+        const edgeLift = 1 - THREE.MathUtils.clamp((distanceToBuildingEdge - 20) / 110, 0, 1);
+        const followHeight = 4.15 + edgeLift * 1.28;
+        const followDistance = 4.2 - edgeLift * .62;
+        const desired = playerRig.root.position.clone().addScaledVector(forward, -followDistance).add(new THREE.Vector3(0, followHeight, 0));
         camera.position.lerp(desired, 1 - Math.pow(0.002, dt));
-        const target = playerRig.root.position.clone().addScaledVector(forward, .65).add(new THREE.Vector3(0, .88, 0));
+        const gameplayTarget = playerRig.root.position.clone().addScaledVector(forward, .78).add(new THREE.Vector3(0, .98, 0));
+        const inwardTarget = playerRig.root.position.clone().lerp(new THREE.Vector3(0, playerRig.root.position.y, 0), .42).add(new THREE.Vector3(0, 1.02, 0));
+        const target = gameplayTarget.lerp(inwardTarget, edgeLift);
         camera.lookAt(target);
       } else {
         controls.update();
@@ -1775,6 +1801,25 @@ export function GameCanvas({
       if (moodGrade) moodGrade.uniforms.time.value = elapsed;
       if (composer) composer.render();
       else renderer.render(scene, camera);
+      if (visualProbeContext && now >= nextVisualProbeAt) {
+        nextVisualProbeAt = now + 2400;
+        try {
+          visualProbeContext.drawImage(renderer.domElement, 0, 0, visualProbeCanvas.width, visualProbeCanvas.height);
+          const frame = visualProbeContext.getImageData(0, 0, visualProbeCanvas.width, visualProbeCanvas.height);
+          const report = createVisualIntelligenceReport(measureVisualFrame(frame), {
+            floorId: floor.id,
+            cameraMode: state.cameraMode,
+            cinematic,
+            nightVision: state.nightVision,
+          });
+          renderer.domElement.dataset.visualCi = report.version;
+          renderer.domElement.dataset.visualScore = String(report.automatedScore);
+          renderer.domElement.dataset.visualBlockers = JSON.stringify(report.blockers);
+          state.onVisualReport(report);
+        } catch {
+          renderer.domElement.dataset.visualCi = 'capture-unavailable';
+        }
+      }
       frameRequest = requestAnimationFrame(render);
     };
     frameRequest = requestAnimationFrame(render);

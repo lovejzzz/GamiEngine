@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
-import { createHumanPelvisGeometry, createHumanTorsoGeometry } from './humanoid-asset-factory';
+import { createHumanTorsoGeometry } from './humanoid-asset-factory';
 
 export type CharacterMotion = 'idle' | 'walk' | 'stairs' | 'crouch' | 'interact' | 'push';
 export type CharacterKind = 'operator' | 'resident';
@@ -13,6 +13,8 @@ export type GltfCharacterRuntime = {
 };
 
 const loader = new GLTFLoader();
+const textureLoader = new THREE.TextureLoader();
+const characterAlbedoPromises = new Map<string, Promise<THREE.Texture>>();
 let assetPromise: Promise<{
   body: THREE.Group;
   clips: THREE.AnimationClip[];
@@ -91,9 +93,43 @@ function loadAssets(bodySource: string, animationSource: string) {
   return assetPromise;
 }
 
+function loadCharacterAlbedo(kind: CharacterKind, source: string) {
+  const existing = characterAlbedoPromises.get(source);
+  if (existing) return existing;
+  const promise = textureLoader.loadAsync(source).then((texture) => {
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.flipY = false;
+    texture.anisotropy = 8;
+    texture.name = `gami-${kind}-clothed-albedo-v1`;
+    return texture;
+  });
+  characterAlbedoPromises.set(source, promise);
+  return promise;
+}
+
 function addOperatorEquipment(model: THREE.Group) {
   const helmetMaterial = new THREE.MeshStandardMaterial({ color: 0x1c2925, roughness: .92, metalness: .03 });
   const metalMaterial = new THREE.MeshStandardMaterial({ color: 0x151b1a, roughness: .58, metalness: .42 });
+  const carrierMaterial = new THREE.MeshPhysicalMaterial({
+    color: 0x34483e,
+    roughness: .96,
+    metalness: 0,
+    sheen: .06,
+    sheenColor: new THREE.Color(0x718177),
+    sheenRoughness: .95,
+  });
+  const spine = model.getObjectByName('spine_02');
+  if (spine) {
+    const carrier = new THREE.Mesh(createHumanTorsoGeometry('operator'), carrierMaterial);
+    carrier.name = 'operator-fitted-plate-carrier';
+    carrier.scale.set(.88, .76, .94);
+    carrier.position.set(0, 1.34, .008);
+    carrier.castShadow = true;
+    carrier.receiveShadow = true;
+    model.add(carrier);
+    model.updateMatrixWorld(true);
+    spine.attach(carrier);
+  }
   const head = model.getObjectByName('Head');
   if (head) {
     const helmet = new THREE.Mesh(new THREE.SphereGeometry(.148, 24, 12, 0, Math.PI * 2, 0, Math.PI * .62), helmetMaterial);
@@ -124,126 +160,6 @@ function addOperatorEquipment(model: THREE.Group) {
   }
 }
 
-function addBoneCover(
-  model: THREE.Group,
-  boneName: string,
-  childName: string,
-  radius: number,
-  material: THREE.Material,
-) {
-  const bone = model.getObjectByName(boneName);
-  const child = model.getObjectByName(childName);
-  if (!bone || !child || child.parent !== bone) return;
-  const direction = child.position.clone();
-  const length = direction.length();
-  if (length < .01) return;
-  const cover = new THREE.Mesh(new THREE.CylinderGeometry(radius * .82, radius, length * 1.06, 18), material);
-  cover.position.copy(direction).multiplyScalar(.5);
-  cover.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
-  cover.castShadow = true;
-  cover.receiveShadow = true;
-  bone.add(cover);
-}
-
-function attachGarmentAtModelPosition(
-  model: THREE.Group,
-  boneName: string,
-  garment: THREE.Object3D,
-  position: THREE.Vector3,
-) {
-  const bone = model.getObjectByName(boneName);
-  if (!bone) return;
-  garment.position.copy(position);
-  model.add(garment);
-  model.updateMatrixWorld(true);
-  bone.attach(garment);
-}
-
-function addClothing(model: THREE.Group, kind: CharacterKind, tint: number, styleIndex: number) {
-  const outerColors = [tint, 0x66736b, 0x735f56, 0x58655c];
-  const trouserColors = [0x343b3a, 0x403936, 0x303641, 0x47423d];
-  const outer = new THREE.MeshPhysicalMaterial({
-    color: kind === 'operator' ? 0x26342f : outerColors[styleIndex % outerColors.length],
-    roughness: .93,
-    metalness: 0,
-    sheen: .1,
-    sheenColor: new THREE.Color(0x8a796b),
-    sheenRoughness: .9,
-  });
-  const trousers = new THREE.MeshStandardMaterial({
-    color: kind === 'operator' ? 0x202a27 : trouserColors[styleIndex % trouserColors.length],
-    roughness: .96,
-    metalness: 0,
-  });
-  const leather = new THREE.MeshStandardMaterial({ color: 0x211c19, roughness: .66, metalness: .04 });
-
-  const jacket = new THREE.Mesh(createHumanTorsoGeometry(kind), outer);
-  // The underlying body already supplies anatomical volume. This shell is only
-  // cloth clearance; oversized depth/width reads as a toy torso in the follow camera.
-  jacket.scale.set(kind === 'operator' ? 1.1 : 1.07, kind === 'operator' ? 1.08 : 1.05, kind === 'operator' ? 1.16 : 1.12);
-  jacket.name = kind === 'operator' ? 'operator-combat-shirt' : 'resident-jacket';
-  jacket.castShadow = true;
-  attachGarmentAtModelPosition(model, 'spine_02', jacket, new THREE.Vector3(0, 1.31, .005));
-
-  if (kind === 'resident') {
-    const lapelMaterial = new THREE.MeshStandardMaterial({ color: 0xa79d8d, roughness: .96, side: THREE.DoubleSide });
-    for (const side of [-1, 1]) {
-      const lapel = new THREE.Mesh(new THREE.PlaneGeometry(.1, .25), lapelMaterial);
-      lapel.position.set(side * .055, .1, .128);
-      lapel.rotation.z = side * .3;
-      jacket.add(lapel);
-    }
-  } else {
-    const vest = new THREE.Mesh(new THREE.BoxGeometry(.34, .38, .075), outer);
-    vest.position.set(0, -.005, .145);
-    vest.castShadow = true;
-    jacket.add(vest);
-    for (let pouch = -1; pouch <= 1; pouch += 1) {
-      const pocket = new THREE.Mesh(new THREE.BoxGeometry(.09, .105, .05), outer);
-      pocket.position.set(pouch * .105, -.13, .205);
-      pocket.castShadow = true;
-      jacket.add(pocket);
-    }
-  }
-
-  const hipShell = new THREE.Mesh(createHumanPelvisGeometry(kind), trousers);
-  hipShell.scale.set(1.06, 1.1, 1.12);
-  hipShell.castShadow = true;
-  hipShell.receiveShadow = true;
-  attachGarmentAtModelPosition(model, 'pelvis', hipShell, new THREE.Vector3(0, .9, 0));
-
-  for (const side of ['l', 'r']) {
-    addBoneCover(model, `upperarm_${side}`, `lowerarm_${side}`, kind === 'operator' ? .084 : .078, outer);
-    addBoneCover(model, `lowerarm_${side}`, `hand_${side}`, kind === 'operator' ? .071 : .066, outer);
-    addBoneCover(model, `thigh_${side}`, `calf_${side}`, kind === 'operator' ? .116 : .108, trousers);
-    addBoneCover(model, `calf_${side}`, `foot_${side}`, kind === 'operator' ? .086 : .08, trousers);
-    addBoneCover(model, `foot_${side}`, `ball_${side}`, kind === 'operator' ? .076 : .071, leather);
-    const foot = model.getObjectByName(`foot_${side}`);
-    const ball = model.getObjectByName(`ball_${side}`);
-    if (foot && ball?.parent === foot) {
-      const direction = ball.position.clone();
-      const shoe = new THREE.Mesh(new THREE.SphereGeometry(kind === 'operator' ? .102 : .094, 18, 12), leather);
-      shoe.scale.set(.84, 1.42, .94);
-      shoe.position.copy(direction).multiplyScalar(.42);
-      shoe.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
-      shoe.castShadow = true;
-      foot.add(shoe);
-    }
-    const knee = model.getObjectByName(`calf_${side}`);
-    if (knee) {
-      const kneeCover = new THREE.Mesh(new THREE.SphereGeometry(kind === 'operator' ? .094 : .086, 18, 12), trousers);
-      kneeCover.scale.set(.86, .78, .92);
-      kneeCover.castShadow = true;
-      knee.add(kneeCover);
-    }
-  }
-
-  const belt = new THREE.Mesh(new THREE.CylinderGeometry(.178, .178, .055, 24), leather);
-  belt.scale.z = .7;
-  belt.castShadow = true;
-  attachGarmentAtModelPosition(model, 'pelvis', belt, new THREE.Vector3(0, .94, 0));
-}
-
 function addResidentHair(model: THREE.Group, styleIndex: number) {
   const colors = [0x241f1a, 0x171615, 0x4a3428, 0x302a25];
   const material = new THREE.MeshStandardMaterial({ color: colors[styleIndex % colors.length], roughness: .96 });
@@ -257,14 +173,41 @@ function addResidentHair(model: THREE.Group, styleIndex: number) {
   head.add(cap);
 }
 
+function addFootwear(model: THREE.Group, kind: CharacterKind) {
+  const material = new THREE.MeshStandardMaterial({
+    color: kind === 'operator' ? 0x111715 : 0x211b18,
+    roughness: kind === 'operator' ? .82 : .7,
+    metalness: .02,
+  });
+  for (const side of ['l', 'r']) {
+    const foot = model.getObjectByName(`foot_${side}`);
+    const toe = model.getObjectByName(`ball_${side}`);
+    if (!foot || !toe || toe.parent !== foot) continue;
+    const direction = toe.position.clone();
+    if (direction.length() < .01) continue;
+    const shoe = new THREE.Mesh(new THREE.CapsuleGeometry(.07, .105, 6, 16), material);
+    shoe.name = `${kind}-shoe-${side}`;
+    shoe.position.copy(direction).multiplyScalar(.52);
+    shoe.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+    shoe.scale.set(.86, 1, 1.06);
+    shoe.castShadow = true;
+    shoe.receiveShadow = true;
+    foot.add(shoe);
+  }
+}
+
 export async function createGltfCharacter(
   kind: CharacterKind,
-  tint: number,
+  _tint: number,
   styleIndex: number,
   bodySource: string,
   animationSource: string,
+  albedoSource: string,
 ) {
-  const assets = await loadAssets(bodySource, animationSource);
+  const [assets, authoredAlbedo] = await Promise.all([
+    loadAssets(bodySource, animationSource),
+    loadCharacterAlbedo(kind, albedoSource),
+  ]);
   const container = new THREE.Group();
   const model = cloneSkeleton(assets.body) as THREE.Group;
   model.name = `gami-${kind}-authored-body`;
@@ -278,7 +221,10 @@ export async function createGltfCharacter(
       if (cloned instanceof THREE.MeshStandardMaterial) {
         cloned.roughness = Math.max(cloned.roughness, kind === 'operator' ? .78 : .9);
         cloned.metalness = 0;
-        if (cloned.name.includes('Superhero')) cloned.color.setHex(0xffffff);
+        if (cloned.name.includes('Superhero')) {
+          cloned.color.setHex(0xffffff);
+          cloned.map = authoredAlbedo;
+        }
       }
       return cloned;
     });
@@ -298,7 +244,9 @@ export async function createGltfCharacter(
     -(bounds.min.z + bounds.max.z) / 2,
   );
 
-  addClothing(model, kind, tint, styleIndex);
+  // UV-registered outfits stay on the skin-weighted body through every animation.
+  // Only genuinely rigid equipment remains separate geometry.
+  addFootwear(model, kind);
   if (kind === 'operator') addOperatorEquipment(model);
   else addResidentHair(model, styleIndex);
 

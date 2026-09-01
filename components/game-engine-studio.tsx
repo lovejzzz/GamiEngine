@@ -4,12 +4,13 @@ import { useCallback, useMemo, useState } from 'react';
 import {
   Boxes, Braces, Building2, Camera, Check, ChevronRight, CirclePause, CirclePlay,
   Cuboid, DoorOpen, Download, Eye, Footprints, Gamepad2, Grid3X3, Image as ImageIcon,
-  Layers3, LoaderCircle, Maximize2, Minimize2, Moon, ShieldCheck, Sparkles, Sun, UserRound, WandSparkles,
+  Layers3, LoaderCircle, Maximize2, Minimize2, Moon, ScanSearch, ShieldCheck, Sparkles, Sun, UserRound, WandSparkles,
 } from 'lucide-react';
 import { GameCanvas, type CameraMode } from './game-canvas';
 import { buildingScene } from '@/engine/demo-scene';
 import { auditAssetQuality, auditSceneQuality } from '@/engine/asset-quality';
 import type { AssetRecipe } from '@/engine/types';
+import type { VisualIntelligenceReport } from '@/engine/visual-intelligence';
 
 const kindIcon = {
   tile: Grid3X3,
@@ -32,6 +33,8 @@ export function GameEngineStudio() {
   const [status, setStatus] = useState('WASD 移动 · E 开门 · Q 互动 · 走入楼梯并沿踏步上下楼');
   const [generating, setGenerating] = useState(false);
   const [notice, setNotice] = useState('');
+  const [visualProbeOpen, setVisualProbeOpen] = useState(false);
+  const [visualReport, setVisualReport] = useState<VisualIntelligenceReport | null>(null);
   const floor = buildingScene.floors[floorIndex];
   const selected = useMemo(
     () => buildingScene.assets.find((asset) => asset.id === selectedId) ?? buildingScene.assets[0],
@@ -47,6 +50,7 @@ export function GameEngineStudio() {
     setFloorIndex(index);
   }, []);
   const changeStatus = useCallback((value: string) => setStatus(value), []);
+  const changeVisualReport = useCallback((value: VisualIntelligenceReport) => setVisualReport(value), []);
 
   const exportScene = () => {
     const blob = new Blob([JSON.stringify(buildingScene, null, 2)], { type: 'application/json' });
@@ -147,12 +151,14 @@ export function GameEngineStudio() {
               <button className={cameraMode === 'follow' ? 'active' : ''} onClick={() => setCameraMode((value) => value === 'editor' ? 'follow' : 'editor')}><Camera size={14} /> {cameraMode === 'editor' ? '俯视编辑' : '跟随游玩'}</button>
               <button className={nightVision ? 'active' : ''} onClick={() => setNightVision((value) => !value)}>{nightVision ? <Moon size={14} /> : <Sun size={14} />} NV</button>
               <button className={showPhysics ? 'active' : ''} onClick={() => setShowPhysics((value) => !value)}><Eye size={14} /> 碰撞</button>
+              <button className={visualProbeOpen ? 'active' : ''} onClick={() => setVisualProbeOpen((value) => !value)}><ScanSearch size={14} /> 视觉 CI</button>
               <button className={cinematic ? 'active' : ''} aria-label={cinematic ? '退出沉浸构图' : '进入沉浸构图'} onClick={() => setCinematic((value) => !value)}>{cinematic ? <Minimize2 size={14} /> : <Maximize2 size={14} />} 构图</button>
             </div>
           </div>
           <div className="canvas-wrap">
-            <GameCanvas floorIndex={floorIndex} paused={paused} showPhysics={showPhysics} nightVision={nightVision} cameraMode={cameraMode} cinematic={cinematic} onFloorChange={changeFloor} onStatus={changeStatus} />
+            <GameCanvas floorIndex={floorIndex} paused={paused} showPhysics={showPhysics} nightVision={nightVision} cameraMode={cameraMode} cinematic={cinematic} onFloorChange={changeFloor} onStatus={changeStatus} onVisualReport={changeVisualReport} />
             <div className="floor-badge"><span>{floor.name}</span><p>{floor.subtitle}</p></div>
+            {visualProbeOpen && <VisualProbePanel report={visualReport} />}
             <div className="play-hint"><kbd>WASD</kbd><span>移动 / 楼梯</span><kbd>E</kbd><span>门</span><kbd>Q</kbd><span>物品</span></div>
             <div className="physics-status"><Footprints size={14} /><p>{status}</p></div>
           </div>
@@ -229,6 +235,29 @@ export function GameEngineStudio() {
         </aside>
       </section>
     </main>
+  );
+}
+
+function VisualProbePanel({ report }: { report: VisualIntelligenceReport | null }) {
+  if (!report) return <aside className="visual-ci-panel loading"><span>VISUAL CI · LIVE PROBE</span><p>正在采样最终渲染帧…</p></aside>;
+  const automated = report.checks.filter((check) => check.status !== 'human-required');
+  const human = report.checks.filter((check) => check.status === 'human-required');
+  const ratio = (value: number) => `${Math.round(value * 100)}%`;
+  return (
+    <aside className="visual-ci-panel" aria-label="视觉质量实时探针">
+      <div className="visual-ci-head"><span>VISUAL CI · {report.variant.toUpperCase()}</span><b>{report.automatedScore}<small>/100 AUTO</small></b></div>
+      <p className="visual-ci-warning">自动指标只负责发现回归，不能签发 Production。</p>
+      <div className="visual-ci-metrics">
+        <span><small>MEAN LUMA</small><b>{ratio(report.metrics.meanLuma)}</b></span>
+        <span><small>BLACK</small><b>{ratio(report.metrics.blackRatio)}</b></span>
+        <span><small>MIDTONE</small><b>{ratio(report.metrics.midtoneRatio)}</b></span>
+        <span><small>EDGE</small><b>{ratio(report.metrics.edgeDensity)}</b></span>
+      </div>
+      <div className="visual-ci-checks">
+        {automated.map((check) => <span key={check.id} className={check.status}><i />{check.label}<b>{check.status.toUpperCase()}</b></span>)}
+      </div>
+      <div className="visual-ci-human"><span>HUMAN EVIDENCE REQUIRED</span><p>{human.map((check) => check.label).join(' · ')}</p></div>
+    </aside>
   );
 }
 

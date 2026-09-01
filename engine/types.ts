@@ -169,6 +169,7 @@ export type DoorSpec = {
   length: number;
   width: number;
   closedAngle: number;
+  initialAngle?: number;
   minAngle: number;
   maxAngle: number;
   frontAsset: string;
