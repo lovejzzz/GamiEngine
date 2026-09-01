@@ -4,11 +4,11 @@ import { useCallback, useMemo, useState } from 'react';
 import {
   Boxes, Braces, Building2, Camera, Check, ChevronRight, CirclePause, CirclePlay,
   Cuboid, DoorOpen, Download, Eye, Footprints, Gamepad2, Grid3X3, Image as ImageIcon,
-  Layers3, LoaderCircle, Maximize2, Minimize2, Moon, Sparkles, Sun, UserRound, WandSparkles,
+  Layers3, LoaderCircle, Maximize2, Minimize2, Moon, ShieldCheck, Sparkles, Sun, UserRound, WandSparkles,
 } from 'lucide-react';
 import { GameCanvas, type CameraMode } from './game-canvas';
 import { buildingScene } from '@/engine/demo-scene';
-import { auditAssetQuality } from '@/engine/asset-quality';
+import { auditAssetQuality, auditSceneQuality } from '@/engine/asset-quality';
 import type { AssetRecipe } from '@/engine/types';
 
 const kindIcon = {
@@ -40,6 +40,7 @@ export function GameEngineStudio() {
     () => selected.geometry?.qualityTier ? auditAssetQuality(selected, buildingScene.assets) : null,
     [selected],
   );
+  const sceneQuality = useMemo(() => auditSceneQuality(buildingScene), []);
 
   const changeFloor = useCallback((index: number) => {
     setFloorIndex(index);
@@ -95,6 +96,7 @@ export function GameEngineStudio() {
           <button><Braces size={14} /> JSON</button>
         </nav>
         <div className="top-actions">
+          <span className={`craft-status ${sceneQuality.stage}`}><ShieldCheck size={12} /> CRAFT {sceneQuality.score} · {sceneQuality.stage.toUpperCase()}</span>
           <span className="autosave"><Check size={12} /> LOCAL</span>
           <button className="icon-button" title="导出场景" onClick={exportScene}><Download size={17} /></button>
           <button className="run-button" onClick={() => setPaused((value) => !value)}>
@@ -132,14 +134,14 @@ export function GameEngineStudio() {
             </TreeGroup>
           </div>
           <div className="principle-card">
-            <span><Sparkles size={14} /> 3D 分离原则</span>
-            <p>GPT 图片只做 PBR 材质；Mesh、门轴、抽屉、碰撞、角色骨骼与灯光由引擎控制。</p>
+            <span><ShieldCheck size={14} /> 作品质量原则</span>
+            <p>能运行不等于完成。参考、构造、材质、互动和近景实证缺一项，资产就不能进入 Production。</p>
           </div>
         </aside>
 
         <section className="viewport-panel">
           <div className="viewport-toolbar">
-            <div><span className="live-dot" /> LIVE · {floor.name} <b>60 FPS</b></div>
+            <div><span className="live-dot" /> LIVE · {floor.name} <b>60 FPS</b><span className={`craft-inline ${sceneQuality.stage}`}>CRAFT {sceneQuality.score} · {sceneQuality.stage.toUpperCase()}</span></div>
             <div>
               <button className={cameraMode === 'follow' ? 'active' : ''} onClick={() => setCameraMode((value) => value === 'editor' ? 'follow' : 'editor')}><Camera size={14} /> {cameraMode === 'editor' ? '俯视编辑' : '跟随游玩'}</button>
               <button className={nightVision ? 'active' : ''} onClick={() => setNightVision((value) => !value)}>{nightVision ? <Moon size={14} /> : <Sun size={14} />} NV</button>
@@ -167,14 +169,35 @@ export function GameEngineStudio() {
             <div><WandSparkles size={16} /><span><strong>视觉一致性锁</strong><small>{buildingScene.styleLock.id}</small></span></div>
             <span className="lock-state">LOCKED</span>
           </div>
+          <section className={`quality-gate-card ${sceneQuality.productionReady ? 'passed' : 'blocked'}`} aria-label="作品质量门">
+            <div className="quality-gate-head">
+              <span><ShieldCheck size={14} /> CRAFT GATE</span>
+              <b>{sceneQuality.score}<small>/100</small></b>
+            </div>
+            <div className="quality-meter"><i style={{ width: `${sceneQuality.score}%` }} /></div>
+            <div className="quality-gate-meta">
+              <span>{sceneQuality.stage.toUpperCase()}</span>
+              <small>Production ≥ {sceneQuality.threshold} · Hero {sceneQuality.heroAssets.passed}/{sceneQuality.heroAssets.total}</small>
+            </div>
+            <div className="quality-dimensions">
+              {sceneQuality.dimensions.map((dimension) => (
+                <span key={dimension.id} className={dimension.status} title={dimension.note}>
+                  <i />{dimension.label}<b>{dimension.status === 'passed' ? 'PASS' : dimension.status === 'failed' ? 'FAIL' : 'WIP'}</b>
+                </span>
+              ))}
+            </div>
+            {!sceneQuality.productionReady && <p>阻断发布：{sceneQuality.blockers.map((blocker) => blocker.split('：')[0]).join(' / ')}</p>}
+          </section>
           <div className="asset-list">
             {buildingScene.assets.map((asset) => {
               const Icon = kindIcon[asset.kind];
+              const assetAudit = asset.geometry?.qualityTier && asset.quality ? auditAssetQuality(asset, buildingScene.assets) : null;
+              const stateLabel = assetAudit ? assetAudit.ready ? 'CRAFTED' : 'BLOCKED' : asset.state === 'ready' ? 'READY' : 'RECIPE';
               return (
                 <button key={asset.id} className={selected.id === asset.id ? 'asset-row selected' : 'asset-row'} onClick={() => setSelectedId(asset.id)}>
                   <span className={asset.source ? 'asset-thumb has-image' : 'asset-thumb'} style={asset.source ? { backgroundImage: `url(${asset.source})` } : undefined}>{asset.source ? null : <Icon size={17} />}</span>
                   <span className="asset-copy"><strong>{asset.name}</strong><small>{asset.atlas ? `${asset.atlas.columns * asset.atlas.rows} frames` : `${asset.usage ?? asset.kind} · ${asset.side ?? 'top'}`}</small></span>
-                  <span className={asset.state === 'ready' ? 'asset-state ready' : 'asset-state recipe'}>{asset.state === 'ready' ? 'READY' : 'RECIPE'}</span>
+                  <span className={`asset-state ${assetAudit ? assetAudit.ready ? 'crafted' : 'blocked' : asset.state === 'ready' ? 'ready' : 'recipe'}`}>{stateLabel}</span>
                 </button>
               );
             })}
@@ -184,12 +207,14 @@ export function GameEngineStudio() {
             <p>{selected.description}</p>
             <div className="metrics">
               <span><small>物理尺寸</small><b>{selected.physicalSize.x} × {selected.physicalSize.y}m</b></span>
-              <span><small>{qualityAudit ? '生产质量' : selected.atlas ? '动画' : '用途'}</small><b>{qualityAudit ? `${qualityAudit.tier?.toUpperCase()} · ${qualityAudit.score}/100` : selected.atlas ? `${selected.atlas.columns}×${selected.atlas.rows} @ ${selected.atlas.fps}` : selected.usage ?? 'recipe'}</b></span>
+              <span><small>{qualityAudit ? '门禁证据' : selected.atlas ? '动画' : '用途'}</small><b>{qualityAudit ? `${qualityAudit.tier?.toUpperCase()} · ${qualityAudit.checks.passed}/${qualityAudit.checks.total} CHECKS` : selected.atlas ? `${selected.atlas.columns}×${selected.atlas.rows} @ ${selected.atlas.fps}` : selected.usage ?? 'recipe'}</b></span>
             </div>
-            {qualityAudit && <div className="prompt-preview">质量门禁：{qualityAudit.ready ? 'PRODUCTION READY' : qualityAudit.issues.join(' / ')}</div>}
+            {qualityAudit && <div className={`prompt-preview quality-result ${qualityAudit.ready ? 'passed' : 'blocked'}`}>质量门禁：{qualityAudit.ready ? 'PRODUCTION READY · 有运行实证' : qualityAudit.issues.join(' / ')}</div>}
+            {qualityAudit && <div className="asset-quality-dimensions">{qualityAudit.dimensions.map((dimension) => <span key={dimension.id} className={dimension.ready ? 'passed' : 'blocked'}><small>{dimension.label}</small><b>{dimension.score}</b></span>)}</div>}
             {selected.referenceStudy && <div className="prompt-preview">学习：{selected.referenceStudy.learn.join(' / ')} · 运行时规则：不直接渲染整图</div>}
             {selected.geometry && <div className="prompt-preview">建模：{selected.geometry.source}{selected.geometry.blueprintId ? ` · ${selected.geometry.blueprintId}` : ''} · {(selected.geometry.independentlyModeledParts ?? []).join(' / ')}</div>}
             {selected.pbr && <div className="prompt-preview">PBR：base-color / {selected.pbr.normalAsset ? 'normal' : '—'} / {selected.pbr.roughnessAsset ? 'roughness' : '—'} · {selected.pbr.texelDensityPxPerMeter}px/m</div>}
+            {selected.quality?.craft && <div className="prompt-preview">构造签名：{selected.quality.craft.signatureParts.join(' / ')} · 拓扑：{selected.quality.craft.topologyTechniques.join(' / ')} · 证据：{selected.quality.craft.review.evidence.length}</div>}
             {selected.animation && <div className="prompt-preview">动画：{selected.animation.skeleton} · {selected.animation.clips.map((clip) => `${clip.id}:${clip.status === 'implemented' ? '✓' : '待做'}`).join(' / ')}</div>}
             {selected.texture && <div className="prompt-preview">贴图：{selected.texture.semantic} · {selected.texture.tileable ? '无缝平铺' : '单次映射'} · {selected.texture.metersPerTile.x}m/块</div>}
             {selected.interaction && <div className="prompt-preview">交互：{selected.interaction.actions.join(' / ')} · {selected.interaction.states.map((state) => state.label).join(' → ')}</div>}

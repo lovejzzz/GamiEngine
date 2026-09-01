@@ -35,6 +35,15 @@ export type InteractionProfile = {
   durationMs?: number;
 };
 
+export type CraftReviewChecks = {
+  silhouette: boolean;
+  proportion: boolean;
+  construction: boolean;
+  materialResponse: boolean;
+  interaction: boolean;
+  collision: boolean;
+};
+
 export type AssetRecipe = {
   id: string;
   name: string;
@@ -93,6 +102,29 @@ export type AssetRecipe = {
     triangleBudget: number;
     maxDrawCalls: number;
     lods: number;
+    craft?: {
+      surfaceClass: 'hard' | 'soft' | 'mixed';
+      signatureParts: string[];
+      topologyTechniques: Array<
+        | 'extrude'
+        | 'lathe'
+        | 'tube'
+        | 'capsule'
+        | 'profiled-frame'
+        | 'casework'
+        | 'profiled-moulding'
+        | 'hinged-parts'
+        | 'upholstery-shell'
+        | 'authored-gltf'
+      >;
+      hardSurfaceMaxBevelRadiusM?: number;
+      prohibitedShortcuts: Array<'single-rounded-box' | 'baked-whole-object' | 'uniform-global-bevel'>;
+      review: {
+        status: 'pending' | 'passed' | 'failed';
+        evidence: string[];
+        checks: CraftReviewChecks;
+      };
+    };
   };
   animation?: {
     skeleton: string;
@@ -226,6 +258,19 @@ export type BuildingScene = {
       edgeSoftness: 'beveled' | 'mixed' | 'sharp';
       materialFamilies: string[];
     };
+  };
+  qualityGate: {
+    id: string;
+    productionThreshold: number;
+    dimensions: Array<{
+      id: string;
+      label: string;
+      weight: number;
+      status: 'passed' | 'in-progress' | 'failed';
+      critical: boolean;
+      evidence: string[];
+      note: string;
+    }>;
   };
   floors: FloorSpec[];
   assets: AssetRecipe[];

@@ -16,6 +16,19 @@ const interaction = (
   durationMs: motion === 'hinge' ? 620 : motion === 'translate' ? 520 : 360,
 });
 
+const passedCraftReview = (evidence: string[]) => ({
+  status: 'passed' as const,
+  evidence,
+  checks: {
+    silhouette: true,
+    proportion: true,
+    construction: true,
+    materialResponse: true,
+    interaction: true,
+    collision: true,
+  },
+});
+
 const outerWalls = (entry = false): RectSpec[] => [
   { id: 'outer-n', x: 90, y: 50, width: 780, height: 18 },
   { id: 'outer-w', x: 90, y: 50, width: 18, height: 520 },
@@ -404,6 +417,14 @@ export const assetRecipes: AssetRecipe[] = [
     },
     quality: {
       status: 'production', minBevelRadiusM: .018, triangleBudget: 32000, maxDrawCalls: 6, lods: 1,
+      craft: {
+        surfaceClass: 'mixed',
+        signatureParts: ['walnut-frame', 'arm-rolls', 'seat-cushions', 'back-cushions', 'piping', 'turned-legs'],
+        topologyTechniques: ['lathe', 'capsule', 'profiled-frame', 'upholstery-shell'],
+        hardSurfaceMaxBevelRadiusM: .018,
+        prohibitedShortcuts: ['single-rounded-box', 'baked-whole-object', 'uniform-global-bevel'],
+        review: passedCraftReview(['/assets/qa-furniture-craft-v8.webp', 'test:hero-furniture-topology']),
+      },
     },
     interaction: interaction('Q 推动沙发', ['inspect', 'push'], [
       { id: 'rest', label: '原位', asset: 'prop.sofa' }, { id: 'shifted', label: '已推动', asset: 'prop.sofa' },
@@ -419,7 +440,17 @@ export const assetRecipes: AssetRecipe[] = [
     referenceStudy: { source: '/assets/reference-casework-multiview-v1.webp', views: ['front', 'left', 'top', 'perspective'], learn: ['silhouette', 'proportion', 'construction', 'material-zones', 'hardware-scale'], runtimeRule: 'never-render-directly' },
     geometry: { source: 'procedural', qualityTier: 'hero', blueprintId: 'victorian.sage-kitchen.v1', primitiveFamily: 'face-frame-casework', independentlyModeledParts: ['carcass', 'stone-worktop', 'cornice', 'plinth', 'cabinet-left', 'drawer-sink', 'cabinet-stove', 'cabinet-side', 'inset-panels', 'hardware'] },
     pbr: { baseColorAsset: 'material.sage-paint', normalAsset: 'material.sage-paint.normal', roughnessAsset: 'material.sage-paint.roughness', texelDensityPxPerMeter: 512 },
-    quality: { status: 'production', minBevelRadiusM: .004, triangleBudget: 42000, maxDrawCalls: 18, lods: 1 },
+    quality: {
+      status: 'production', minBevelRadiusM: .004, triangleBudget: 42000, maxDrawCalls: 18, lods: 1,
+      craft: {
+        surfaceClass: 'hard',
+        signatureParts: ['carcass', 'stone-worktop', 'cornice', 'plinth', 'inset-panels', 'hardware'],
+        topologyTechniques: ['casework', 'profiled-moulding', 'hinged-parts'],
+        hardSurfaceMaxBevelRadiusM: .006,
+        prohibitedShortcuts: ['single-rounded-box', 'baked-whole-object', 'uniform-global-bevel'],
+        review: passedCraftReview(['/assets/qa-furniture-craft-v8.webp', 'test:hero-furniture-topology']),
+      },
+    },
     interaction: interaction('靠近具体柜门后按 Q', ['inspect'], [{ id: 'closed', label: '柜体' }], 'none'),
   },
   {
@@ -450,7 +481,17 @@ export const assetRecipes: AssetRecipe[] = [
     referenceStudy: { source: '/assets/reference-dining-furniture-multiview-v1.webp', views: ['front', 'left', 'top', 'perspective'], learn: ['silhouette', 'proportion', 'construction', 'material-zones', 'wear-language'], runtimeRule: 'never-render-directly' },
     geometry: { source: 'procedural', qualityTier: 'hero', blueprintId: 'victorian.dining-table.v1', primitiveFamily: 'extruded-oval-and-lathed-turnery', independentlyModeledParts: ['profiled-top', 'edge-profile', 'apron', 'turned-legs', 'stretchers', 'center-joint'] },
     pbr: { baseColorAsset: 'material.walnut', normalAsset: 'material.walnut.normal', roughnessAsset: 'material.walnut.roughness', texelDensityPxPerMeter: 512 },
-    quality: { status: 'production', minBevelRadiusM: .004, triangleBudget: 18000, maxDrawCalls: 12, lods: 1 },
+    quality: {
+      status: 'production', minBevelRadiusM: .004, triangleBudget: 18000, maxDrawCalls: 12, lods: 1,
+      craft: {
+        surfaceClass: 'hard',
+        signatureParts: ['profiled-top', 'apron', 'turned-legs', 'stretchers'],
+        topologyTechniques: ['extrude', 'lathe', 'profiled-frame'],
+        hardSurfaceMaxBevelRadiusM: .008,
+        prohibitedShortcuts: ['single-rounded-box', 'baked-whole-object', 'uniform-global-bevel'],
+        review: passedCraftReview(['/assets/qa-furniture-craft-v8.webp', 'test:hero-furniture-topology']),
+      },
+    },
     interaction: interaction('Q 检查餐桌', ['inspect'], [{ id: 'rest', label: '静置', asset: 'prop.table' }], 'none'),
   },
   {
@@ -463,7 +504,17 @@ export const assetRecipes: AssetRecipe[] = [
     referenceStudy: { source: '/assets/reference-dining-furniture-multiview-v1.webp', views: ['front', 'left', 'back', 'top', 'perspective'], learn: ['silhouette', 'proportion', 'construction', 'material-zones', 'wear-language'], runtimeRule: 'never-render-directly' },
     geometry: { source: 'procedural', qualityTier: 'hero', blueprintId: 'victorian.dining-chair.v1', primitiveFamily: 'shaped-seat-and-lathed-turnery', independentlyModeledParts: ['shaped-seat', 'upholstery', 'turned-legs', 'back-posts', 'spindles', 'crest-rail', 'stretchers', 'nailheads'] },
     pbr: { baseColorAsset: 'material.walnut', normalAsset: 'material.walnut.normal', roughnessAsset: 'material.walnut.roughness', texelDensityPxPerMeter: 512 },
-    quality: { status: 'production', minBevelRadiusM: .003, triangleBudget: 22000, maxDrawCalls: 14, lods: 1 },
+    quality: {
+      status: 'production', minBevelRadiusM: .003, triangleBudget: 22000, maxDrawCalls: 14, lods: 1,
+      craft: {
+        surfaceClass: 'mixed',
+        signatureParts: ['shaped-seat', 'turned-legs', 'spindles', 'crest-rail', 'stretchers', 'nailheads'],
+        topologyTechniques: ['extrude', 'lathe', 'tube'],
+        hardSurfaceMaxBevelRadiusM: .008,
+        prohibitedShortcuts: ['single-rounded-box', 'baked-whole-object', 'uniform-global-bevel'],
+        review: passedCraftReview(['/assets/qa-furniture-craft-v8.webp', 'test:hero-furniture-topology']),
+      },
+    },
     interaction: interaction('Q 拉开椅子', ['push', 'move'], [
       { id: 'tucked', label: '收拢', asset: 'prop.chair' }, { id: 'pulled', label: '拉开', asset: 'prop.chair' },
     ], 'translate'),
@@ -548,6 +599,52 @@ export const buildingScene: BuildingScene = {
       edgeSoftness: 'beveled',
       materialFamilies: ['greige lime plaster', 'soot-aged brick', 'dark walnut', 'oxblood woven rugs', 'muted olive leather', 'tarnished brass'],
     },
+  },
+  qualityGate: {
+    id: 'gami-authored-craft-v1',
+    productionThreshold: 90,
+    dimensions: [
+      {
+        id: 'art-direction', label: '原创美术方向', weight: 12, status: 'passed', critical: true,
+        evidence: ['reference.townhouse-art-direction-v1', 'style-lock:moonlit-lived-in-townhouse-v2'],
+        note: '原创住宅身份、色温和材质语言已锁定。',
+      },
+      {
+        id: 'hero-construction', label: 'Hero 构造可信度', weight: 18, status: 'passed', critical: true,
+        evidence: ['audit:4/4-hero-assets', 'test:hero-furniture-topology', '/assets/qa-furniture-craft-v8.webp'],
+        note: '桌、椅、沙发和柜体已通过构造拓扑与近景审查。',
+      },
+      {
+        id: 'materials', label: 'PBR 材质响应', weight: 14, status: 'passed', critical: true,
+        evidence: ['audit:base-normal-roughness', 'browser:pbr-runtime-review'],
+        note: 'Hero 材质具有独立 base、normal 与 roughness。',
+      },
+      {
+        id: 'simulation', label: '互动与空间可信度', weight: 14, status: 'passed', critical: true,
+        evidence: ['test:runtime-collision', 'browser:door-and-stair-playtest'],
+        note: '门、家具碰撞、人物阻挡和楼梯流送已实走。',
+      },
+      {
+        id: 'lighting', label: '电影光影与空间深度', weight: 10, status: 'in-progress', critical: true,
+        evidence: ['runtime:gtao-bloom-practical-lights'],
+        note: '已有冷暖层次和接触阴影，但局部灯具、遮蔽与曝光仍需逐房精修。',
+      },
+      {
+        id: 'characters', label: '角色造型可信度', weight: 12, status: 'in-progress', critical: true,
+        evidence: ['runtime:gami-humanoid-v1'],
+        note: '现有角色仍是程序化替身，需要参考驱动的人体、服装和身份细节。',
+      },
+      {
+        id: 'animation', label: '动作表演质量', weight: 8, status: 'in-progress', critical: true,
+        evidence: ['clips:idle-walk-sleep-hide'],
+        note: '基础关节步态可用，仍缺楼梯、推门、搜索、惊吓与投降的制作级动作。',
+      },
+      {
+        id: 'architecture', label: '建筑与陈设完成度', weight: 12, status: 'in-progress', critical: true,
+        evidence: ['runtime:four-streamed-floors'],
+        note: '空间可玩，但建筑线脚、生活痕迹和次级陈设还未达到最终镜头质量。',
+      },
+    ],
   },
   assets: assetRecipes,
   floors: [
