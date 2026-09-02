@@ -163,7 +163,7 @@ export function GameEngineStudio() {
             <div className="physics-status"><Footprints size={14} /><p>{status}</p></div>
           </div>
           <div className="viewport-footer">
-            <span>RENDERER <b>THREE.JS · WEBGL</b></span>
+            <span>GAMI BACKEND <b>THREE ADAPTER · WEBGL2</b></span>
             <span>CAMERA <b>{cameraMode === 'editor' ? 'EDITOR ORBIT' : 'PLAYER FOLLOW'}</b></span>
             <span>STREAM <b>{floor.id.toUpperCase()} ACTIVE</b></span>
             <span>PLAYER <b>3D RIG</b></span>

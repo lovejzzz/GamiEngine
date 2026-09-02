@@ -248,7 +248,20 @@ export type BuildingScene = {
   world: { width: number; height: number; pixelsPerMeter: number };
   renderer: {
     mode: '3d';
-    engine: 'three';
+    engine: 'gami';
+    sceneGraph: 'three';
+    backend: 'three-webgl' | 'three-webgpu';
+    backendPolicy: {
+      preferred: 'three-webgpu';
+      fallback: 'three-webgl';
+      requiredCapabilities: Array<
+        | 'post-processing'
+        | 'screen-space-ambient-occlusion'
+        | 'hdr-tone-mapping'
+        | 'shadow-maps'
+        | 'frame-capture'
+      >;
+    };
     floorStreaming: boolean;
     defaultCamera: 'editor' | 'follow';
   };

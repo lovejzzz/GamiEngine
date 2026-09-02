@@ -4,13 +4,7 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { createGamiRenderBackend } from './rendering/create-render-backend';
 import { createParametricSofa } from './parametric-asset-factory';
 import {
   createTownhouseBed,
@@ -44,6 +38,7 @@ import {
   measureVisualFrame,
   type VisualIntelligenceReport,
 } from '@/engine/visual-intelligence';
+import { evaluateBackendCapabilities, frameStatsToDebugState } from '@/engine/rendering/backend';
 import type { FloorSpec, InteractionProfile, OccupantSpec, PropSpec, RectSpec, Vec2 } from '@/engine/types';
 import {
   circleHitsRect,
@@ -116,39 +111,6 @@ const toWorld = (point: Vec2) => new THREE.Vector3(
   toMeters(point.y - buildingScene.world.height / 2),
 );
 
-const GAMI_MOOD_GRADE = {
-  uniforms: {
-    tDiffuse: { value: null },
-    time: { value: 0 },
-  },
-  vertexShader: `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
-  fragmentShader: `
-    uniform sampler2D tDiffuse;
-    uniform float time;
-    varying vec2 vUv;
-    float hash(vec2 p) {
-      return fract(sin(dot(p, vec2(127.1, 311.7)) + time * 0.17) * 43758.5453);
-    }
-    void main() {
-      vec4 source = texture2D(tDiffuse, vUv);
-      float luma = dot(source.rgb, vec3(0.2126, 0.7152, 0.0722));
-      vec3 color = mix(vec3(luma), source.rgb, 0.94);
-      color = (color - 0.5) * 1.025 + 0.5;
-      vec2 centered = (vUv - 0.5) * vec2(1.08, 1.0);
-      float vignette = 1.0 - smoothstep(0.19, 0.63, dot(centered, centered));
-      color *= mix(0.965, 1.0, vignette);
-      color += (hash(gl_FragCoord.xy) - 0.5) * 0.004;
-      gl_FragColor = vec4(color, source.a);
-    }
-  `,
-};
-
 function makeMemory(floor: FloorSpec): FloorMemory {
   const existing = memories.get(floor.id);
   if (existing) return existing;
@@ -198,54 +160,25 @@ export function GameCanvas({
 
     const camera = new THREE.PerspectiveCamera(cinematic ? 34 : 38, 1, 0.05, 60);
     camera.position.set(cinematic ? -6.45 : 0.35, cinematic ? 5.75 : 10.1, cinematic ? 8.2 : 7.8);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = cinematic ? 1.07 : 1.04;
-    renderer.domElement.className = 'game-canvas';
-    renderer.domElement.tabIndex = 0;
-    renderer.domElement.setAttribute('aria-label', 'Gami Engine 3D 房屋演示。WASD 移动，E 开门，Q 互动，沿楼梯行走自动上下楼。');
-    mount.appendChild(renderer.domElement);
-    const visualProbeCanvas = document.createElement('canvas');
-    visualProbeCanvas.width = 256;
-    visualProbeCanvas.height = 144;
-    const visualProbeContext = visualProbeCanvas.getContext('2d', { willReadFrequently: true });
-    let nextVisualProbeAt = 0;
-    const composer = cinematic ? new EffectComposer(renderer) : null;
-    let moodGrade: ShaderPass | null = null;
-    if (composer) {
-      composer.addPass(new RenderPass(scene, camera));
-      const gtaoPass = new GTAOPass(scene, camera, 640, 360);
-      gtaoPass.updateGtaoMaterial({
-        radius: 0.22,
-        distanceExponent: 1.6,
-        thickness: 0.62,
-        distanceFallOff: 0.7,
-        scale: 0.68,
-        samples: 16,
-      });
-      gtaoPass.updatePdMaterial({
-        lumaPhi: 10,
-        depthPhi: 2,
-        normalPhi: 3,
-        radius: 4,
-        radiusExponent: 1.5,
-        rings: 2,
-        samples: 8,
-      });
-      composer.addPass(gtaoPass);
-      composer.addPass(new UnrealBloomPass(new THREE.Vector2(640, 360), 0.1, 0.34, 0.88));
-      moodGrade = new ShaderPass(GAMI_MOOD_GRADE);
-      composer.addPass(moodGrade);
-      composer.addPass(new OutputPass());
+    const backend = createGamiRenderBackend({
+      backend: buildingScene.renderer.backend,
+      scene,
+      camera,
+      cinematic,
+      exposure: cinematic ? 1.07 : 1.04,
+      environmentIntensity: Math.max(buildingScene.styleLock.contract?.environmentIntensity ?? 0.22, 0.27),
+      pixelRatio: Math.min(window.devicePixelRatio, 2),
+    });
+    const backendReadiness = evaluateBackendCapabilities(
+      backend.capabilities,
+      buildingScene.renderer.backendPolicy.requiredCapabilities,
+    );
+    if (!backendReadiness.ready) {
+      backend.dispose();
+      throw new Error(`Render backend ${backend.id} is missing: ${backendReadiness.missing.join(', ')}`);
     }
-    const pmremGenerator = new THREE.PMREMGenerator(renderer);
-    const environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
-    scene.environment = environment;
-    scene.environmentIntensity = Math.max(buildingScene.styleLock.contract?.environmentIntensity ?? 0.22, 0.27);
+    mount.appendChild(backend.canvas);
+    let nextVisualProbeAt = 0;
     const interactionPrompt = document.createElement('div');
     interactionPrompt.className = 'interaction-prompt';
     interactionPrompt.hidden = true;
@@ -255,7 +188,7 @@ export function GameCanvas({
     floorTransition.innerHTML = '<span>STAIR PORTAL</span><b></b>';
     mount.appendChild(floorTransition);
 
-    const controls = new OrbitControls(camera, renderer.domElement);
+    const controls = new OrbitControls(camera, backend.canvas);
     controls.enableDamping = true;
     controls.enablePan = false;
     controls.minDistance = 5;
@@ -276,7 +209,7 @@ export function GameCanvas({
       texture.wrapS = THREE.RepeatWrapping;
       texture.wrapT = THREE.RepeatWrapping;
       texture.repeat.set(repeatX, repeatY);
-      texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      texture.anisotropy = backend.capabilities.maxAnisotropy;
       return texture;
     };
     const material = (
@@ -292,7 +225,7 @@ export function GameCanvas({
       roughness,
       metalness,
     });
-    const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+    const maxAnisotropy = backend.capabilities.maxAnisotropy;
     const wallMaterial = createCalibratedPbrMaterial(textureLoader, buildingScene.assets, {
       baseColorAsset: 'material.plaster.greige.base',
       normalAsset: 'material.plaster.greige.normal',
@@ -819,7 +752,7 @@ export function GameCanvas({
       rugTexture.colorSpace = THREE.SRGBColorSpace;
       rugTexture.wrapS = THREE.ClampToEdgeWrapping;
       rugTexture.wrapT = THREE.ClampToEdgeWrapping;
-      rugTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      rugTexture.anisotropy = backend.capabilities.maxAnisotropy;
       const rugSurface = new THREE.MeshStandardMaterial({ map: rugTexture, color: 0xc4a59a, transparent: true, alphaTest: 0.035, roughness: 1, side: THREE.DoubleSide });
       const addRug = (x: number, z: number, width: number, depth: number) => {
         const rug = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), rugSurface);
@@ -1517,8 +1450,7 @@ export function GameCanvas({
     const resize = () => {
       const width = Math.max(1, mount.clientWidth);
       const height = Math.max(1, mount.clientHeight);
-      renderer.setSize(width, height, false);
-      composer?.setSize(width, height);
+      backend.resize(width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
     };
@@ -1659,9 +1591,9 @@ export function GameCanvas({
       const state = stateRef.current;
       controls.enabled = state.cameraMode === 'editor';
       debugGroup.visible = state.showPhysics;
-      renderer.domElement.style.filter = state.nightVision
+      backend.setVisualFilter(state.nightVision
         ? 'sepia(.7) hue-rotate(72deg) saturate(1.45) brightness(1.18)'
-        : 'none';
+        : 'none');
       scene.background = new THREE.Color(state.nightVision ? 0x041109 : 0x060b10);
       scene.fog = new THREE.FogExp2(state.nightVision ? 0x06140b : 0x081016, state.nightVision ? 0.016 : 0.011);
       hemi.color.setHex(state.nightVision ? 0x83d59a : 0x718aa1);
@@ -1773,52 +1705,53 @@ export function GameCanvas({
         camera.updateProjectionMatrix();
       }
 
-      renderer.domElement.dataset.playerX = player.x.toFixed(1);
-      renderer.domElement.dataset.playerY = player.y.toFixed(1);
-      renderer.domElement.dataset.floor = floor.id;
-      renderer.domElement.dataset.moving = String(player.moving);
-      renderer.domElement.dataset.camera = state.cameraMode;
-      renderer.domElement.dataset.cinematic = String(cinematic);
-      renderer.domElement.dataset.renderer = 'three-webgl';
-      renderer.domElement.dataset.interactions = JSON.stringify({ ...memory.props, ...memory.parts });
-      renderer.domElement.dataset.doors = JSON.stringify(Object.fromEntries(
-        doors.map((door) => [door.id, Number(door.angle.toFixed(3))]),
-      ));
-      renderer.domElement.dataset.focusedInteraction = focusedInteraction?.id ?? '';
-      renderer.domElement.dataset.interactionBusy = String(now < interactionBusyUntil);
-      renderer.domElement.dataset.stairProgress = playerOnStairs ? stairProgress(player, floor.stairs).toFixed(3) : '';
-      renderer.domElement.dataset.stairTransition = String(transitioningFloor);
-      renderer.domElement.dataset.characterAssets = authoredCharacterFailed
-        ? `fallback:${authoredCharacterCount}`
-        : authoredCharacterCount === residentRigs.length + 1 ? `gltf-ready:${authoredCharacterCount}` : `loading:${authoredCharacterCount}`;
-      renderer.domElement.dataset.occupants = JSON.stringify(Object.fromEntries(
-        residentRigs.map((resident) => [resident.spec.id, {
-          x: Number(resident.state.position.x.toFixed(1)),
-          y: Number(resident.state.position.y.toFixed(1)),
-          moving: resident.moving,
-        }]),
-      ));
-      if (moodGrade) moodGrade.uniforms.time.value = elapsed;
-      if (composer) composer.render();
-      else renderer.render(scene, camera);
-      if (visualProbeContext && now >= nextVisualProbeAt) {
+      backend.setDebugState({
+        playerX: player.x.toFixed(1),
+        playerY: player.y.toFixed(1),
+        floor: floor.id,
+        moving: String(player.moving),
+        camera: state.cameraMode,
+        cinematic: String(cinematic),
+        renderer: backend.id,
+        renderApi: backend.capabilities.api,
+        interactions: JSON.stringify({ ...memory.props, ...memory.parts }),
+        doors: JSON.stringify(Object.fromEntries(
+          doors.map((door) => [door.id, Number(door.angle.toFixed(3))]),
+        )),
+        focusedInteraction: focusedInteraction?.id ?? '',
+        interactionBusy: String(now < interactionBusyUntil),
+        stairProgress: playerOnStairs ? stairProgress(player, floor.stairs).toFixed(3) : '',
+        stairTransition: String(transitioningFloor),
+        characterAssets: authoredCharacterFailed
+          ? `fallback:${authoredCharacterCount}`
+          : authoredCharacterCount === residentRigs.length + 1 ? `gltf-ready:${authoredCharacterCount}` : `loading:${authoredCharacterCount}`,
+        occupants: JSON.stringify(Object.fromEntries(
+          residentRigs.map((resident) => [resident.spec.id, {
+            x: Number(resident.state.position.x.toFixed(1)),
+            y: Number(resident.state.position.y.toFixed(1)),
+            moving: resident.moving,
+          }]),
+        )),
+      });
+      backend.render({ elapsedSeconds: elapsed });
+      backend.setDebugState(frameStatsToDebugState(backend.getFrameStats()));
+      if (now >= nextVisualProbeAt) {
         nextVisualProbeAt = now + 2400;
-        try {
-          visualProbeContext.drawImage(renderer.domElement, 0, 0, visualProbeCanvas.width, visualProbeCanvas.height);
-          const frame = visualProbeContext.getImageData(0, 0, visualProbeCanvas.width, visualProbeCanvas.height);
+        const frame = backend.captureFrame(256, 144);
+        if (frame) {
           const report = createVisualIntelligenceReport(measureVisualFrame(frame), {
             floorId: floor.id,
             cameraMode: state.cameraMode,
             cinematic,
             nightVision: state.nightVision,
           });
-          renderer.domElement.dataset.visualCi = report.version;
-          renderer.domElement.dataset.visualScore = String(report.automatedScore);
-          renderer.domElement.dataset.visualBlockers = JSON.stringify(report.blockers);
+          backend.setDebugState({
+            visualCi: report.version,
+            visualScore: String(report.automatedScore),
+            visualBlockers: JSON.stringify(report.blockers),
+          });
           state.onVisualReport(report);
-        } catch {
-          renderer.domElement.dataset.visualCi = 'capture-unavailable';
-        }
+        } else backend.setDebugState({ visualCi: 'capture-unavailable' });
       }
       frameRequest = requestAnimationFrame(render);
     };
@@ -1850,11 +1783,7 @@ export function GameCanvas({
           else disposeMaterial(object.material);
         }
       });
-      environment.dispose();
-      pmremGenerator.dispose();
-      composer?.dispose();
-      renderer.dispose();
-      renderer.domElement.remove();
+      backend.dispose();
       interactionPrompt.remove();
       floorTransition.remove();
     };

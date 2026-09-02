@@ -639,7 +639,25 @@ export const buildingScene: BuildingScene = {
   version: 2,
   name: 'GAMI ENGINE / NO. 47 TOWNHOUSE DEMO',
   world: { width: 960, height: 620, pixelsPerMeter: 80 },
-  renderer: { mode: '3d', engine: 'three', floorStreaming: true, defaultCamera: 'editor' },
+  renderer: {
+    mode: '3d',
+    engine: 'gami',
+    sceneGraph: 'three',
+    backend: 'three-webgl',
+    backendPolicy: {
+      preferred: 'three-webgpu',
+      fallback: 'three-webgl',
+      requiredCapabilities: [
+        'post-processing',
+        'screen-space-ambient-occlusion',
+        'hdr-tone-mapping',
+        'shadow-maps',
+        'frame-capture',
+      ],
+    },
+    floorStreaming: true,
+    defaultCamera: 'editor',
+  },
   styleLock: {
     id: 'moonlit-lived-in-townhouse-v2',
     projection: '3D cutaway building with editor orbit and player-follow camera',

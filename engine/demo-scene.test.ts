@@ -7,7 +7,17 @@ describe('Gami Engine demo manifest', () => {
 
   it('uses the 3D renderer and four connected streamed floors', () => {
     expect(buildingScene.version).toBe(2);
-    expect(buildingScene.renderer).toMatchObject({ mode: '3d', engine: 'three', floorStreaming: true });
+    expect(buildingScene.renderer).toMatchObject({
+      mode: '3d',
+      engine: 'gami',
+      sceneGraph: 'three',
+      backend: 'three-webgl',
+      floorStreaming: true,
+    });
+    expect(buildingScene.renderer.backendPolicy).toMatchObject({
+      preferred: 'three-webgpu',
+      fallback: 'three-webgl',
+    });
     expect(buildingScene.floors.map((floor) => floor.id)).toEqual(['b1', 'f1', 'f2', 'f3']);
     for (const floor of buildingScene.floors) {
       expect(floor.stairs.autoTraverse).toBe(true);
